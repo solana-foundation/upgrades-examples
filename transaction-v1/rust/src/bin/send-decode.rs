@@ -145,14 +145,18 @@ fn main() -> Result<()> {
 }
 
 fn describe(config: &v1::TransactionConfig) -> String {
+    let v1::TransactionConfig {
+        priority_fee,
+        compute_unit_limit,
+        loaded_accounts_data_size_limit: data_size_limit,
+        heap_size,
+        ..
+    } = config;
     format!(
         "  priority_fee:       {:?} (total lamports, not micro-lamports/CU)\n  \
          compute_unit_limit: {:?}\n  \
          loaded_accounts:    {:?}\n  \
          heap_size:          {:?}",
-        config.priority_fee,
-        config.compute_unit_limit,
-        config.loaded_accounts_data_size_limit,
-        config.heap_size,
+        priority_fee, compute_unit_limit, data_size_limit, heap_size,
     )
 }
