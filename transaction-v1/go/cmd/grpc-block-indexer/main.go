@@ -18,8 +18,8 @@ import (
 
 	"github.com/solana-foundation/solana-go/v2"
 
-	"github.com/solana-foundation/transaction-v1-examples/go/pb"
-	"github.com/solana-foundation/transaction-v1-examples/go/txv1"
+	"github.com/solana-foundation/upgrades-examples/transaction-v1/go/pb"
+	"github.com/solana-foundation/upgrades-examples/transaction-v1/go/txv1"
 )
 
 func main() {

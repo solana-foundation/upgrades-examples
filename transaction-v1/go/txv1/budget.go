@@ -12,7 +12,7 @@ import (
 	"github.com/solana-foundation/solana-go/v2"
 	computebudget "github.com/solana-foundation/solana-go/v2/programs/compute-budget"
 
-	"github.com/solana-foundation/transaction-v1-examples/go/pb"
+	"github.com/solana-foundation/upgrades-examples/transaction-v1/go/pb"
 )
 
 const (
