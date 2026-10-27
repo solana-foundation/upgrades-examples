@@ -13,7 +13,7 @@ set -euo pipefail
 TAG="${YELLOWSTONE_TAG:-v15.1.2+solana.4.2.0}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/go/pb"
-GO_PACKAGE="github.com/solana-foundation/transaction-v1-examples/go/pb"
+GO_PACKAGE="github.com/solana-foundation/upgrades-examples/transaction-v1/go/pb"
 
 for tool in protoc git go; do
     if ! command -v "$tool" >/dev/null; then

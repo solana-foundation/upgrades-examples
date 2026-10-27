@@ -1,4 +1,4 @@
-module github.com/solana-foundation/transaction-v1-examples/go
+module github.com/solana-foundation/upgrades-examples/transaction-v1/go
 
 go 1.25.0
 
