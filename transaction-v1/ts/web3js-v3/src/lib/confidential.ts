@@ -17,14 +17,10 @@ import {
 import {
     type Address,
     createSolanaRpc,
-    flattenInstructionPlan,
-    getSignersFromInstruction,
+    getSignersFromInstructionPlan,
     type Instruction,
     type InstructionPlan,
-    type InstructionPlanInput,
     isTransactionPartialSigner,
-    isSingleInstructionPlan,
-    type TransactionPartialSigner,
     parseInstructionPlanInput,
 } from '@solana/kit';
 import { Connection, Keypair } from '@solana/web3.js';
@@ -55,29 +51,14 @@ export async function createConfidentialContext(airdrop: number): Promise<Confid
     return { connection, payer: await fundedKeypair(connection, airdrop), rpc: createSolanaRpc(RPC_URL) };
 }
 
-/**
- * Collects the signers that token-2022 instructions carry on their accounts.
- * Confidential transfers generate ephemeral proof-context keypairs internally,
- * so their signers are only reachable through the instructions themselves.
- */
-function instructionSigners(input: InstructionPlanInput): TransactionPartialSigner[] {
-    const signers = new Map<string, TransactionPartialSigner>();
-    for (const leaf of flattenInstructionPlan(parseInstructionPlanInput(input))) {
-        if (!isSingleInstructionPlan(leaf)) {
-            continue;
-        }
-        for (const signer of getSignersFromInstruction(leaf.instruction)) {
-            if (isTransactionPartialSigner(signer)) {
-                signers.set(signer.address, signer);
-            }
-        }
-    }
-    return [...signers.values()];
-}
-
 /** Sends one instruction or instruction plan as a single v1 transaction. */
 export function send(context: ConfidentialContext, input: Instruction | InstructionPlan) {
-    return sendV1Transaction(context.connection, context.payer, [input], instructionSigners(input));
+    return sendV1Transaction(
+        context.connection,
+        context.payer,
+        [input],
+        getSignersFromInstructionPlan(parseInstructionPlanInput(input)).filter(isTransactionPartialSigner),
+    );
 }
 
 export async function fetchPartyBalance(context: ConfidentialContext, party: ConfidentialParty) {
