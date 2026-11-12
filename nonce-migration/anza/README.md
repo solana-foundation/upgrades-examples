@@ -53,7 +53,7 @@ The five operations in the directory README are mostly calls into the official c
 | Predict the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 
-`sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire, about a minute on a local validator, which is the shortest proof that the signed authorization outlives one. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
+`sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire, about a minute on a local validator, which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
 `token-transfer` is the withdrawal most nonce users run: tokens, not SOL. The PDA holds 1,000 of a Token program mint, the kind USDC is. The cold key signs one action that creates the recipient's token account, with the PDA paying the rent, and moves 250 into it; the hot key relays it. It costs about 90,000 compute units against roughly 54,000 for a SOL transfer, most of it the account creation. It does not wait for a blockhash to expire; `sign-relay` already shows that.
 
@@ -82,7 +82,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 ## Common gotchas
 
-**Two different errors are both `custom program error: 0x3`.** The Executor's `NonceMismatch` and the Signer's `InvalidSignature` share the number. A replayed authorization fails with the first, an edited one with the second. Read which program failed in the log to tell them apart.
+**Two different errors are both `custom program error: 0x3`.** The Executor's `NonceMismatch` and the Signer's `InvalidSignature` share the number. A replayed authorization fails with the first, an edited one with the second. Read which program failed in the log to tell them apart; `sign-relay` triggers both.
 
 **The execution message must carry no transaction config.** The Executor rejects one that sets a compute unit limit or a priority fee, since those only mean something on a top-level transaction. Set the budget on the relay transaction instead. The Anza CLI strips a config it is handed; these examples never set one.
 
@@ -132,7 +132,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value predicted at signing time, and, in `sign-relay`, a replay was rejected. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value predicted at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected. CI runs `just check` and `just demo`.
 
 ## Layout
 

@@ -13,6 +13,7 @@
  */
 
 import {
+    ED25519_SIGNER_ERROR__INVALID_SIGNATURE,
     findProgrammaticSignerPda,
     MESSAGE_EXECUTOR_ERROR__NONCE_MISMATCH,
 } from '@solana-program/ed25519-programmatic-signer';
@@ -28,6 +29,7 @@ import {
     getTransactionSize,
     isSolanaError,
     lamports,
+    type ReadonlyUint8Array,
     singleInstructionPlan,
     SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION,
     SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM,
@@ -118,6 +120,25 @@ if (process.env.PSIGNER_SKIP_EXPIRY) {
     console.log('  expired; a transaction signed alongside the artifact would now be dropped');
 }
 
+// An edited payment. A relayer that swaps in a larger amount still holds only
+// the signature over the original, so the Signer program refuses it.
+console.log('\n== relayed with the amount edited ==');
+const edited = getTransferSolInstruction({
+    amount: 2n * AMOUNT,
+    destination: recipient,
+    source: createNoopSigner(pda),
+});
+await expectRejected(
+    authorizationMessage(
+        executionMessage(pda, singleInstructionPlan(edited), nonce),
+        nonceAccount,
+        pda,
+        authority.address,
+    ),
+    ED25519_SIGNER_ERROR__INVALID_SIGNATURE,
+    "the Signer's InvalidSignature",
+);
+
 // The hot side. Any funded key can relay; it learns nothing it can change.
 // The client wraps the Submit instruction in a v1 transaction with a fresh
 // blockhash, measures its resource limits by simulation, signs, and sends.
@@ -150,24 +171,28 @@ if (advanced !== predicted) {
     throw new Error('the nonce did not advance to the value predicted at signing time');
 }
 
-// The nonce value the artifact names is gone, so the executor refuses it.
-// The error is the Executor's `NonceMismatch`, surfaced through the Signer.
+// The nonce value the artifact names is gone, so the Executor refuses it.
 console.log('\n== relayed again ==');
-try {
-    await relayer.sendTransaction(submit);
-    throw new Error('the replay unexpectedly landed');
-} catch (error) {
-    if (!isSolanaError(error, SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION)) {
-        throw error;
+await expectRejected(authorization, MESSAGE_EXECUTOR_ERROR__NONCE_MISMATCH, "the Executor's NonceMismatch");
+
+/**
+ * Relays `message` with the cold key's signature and throws unless it is
+ * rejected with the custom program error `code`. Both errors here are number
+ * 3, in different programs. The client simulates before sending, so the
+ * rejection arrives wrapped in a simulation error.
+ */
+async function expectRejected(message: ReadonlyUint8Array, code: number, name: string) {
+    try {
+        await relayer.ed25519Signer.instructions.submit({ message, signatures: [signature] }).sendTransaction();
+    } catch (error) {
+        const cause = isSolanaError(error, SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION)
+            ? unwrapSimulationError(error.cause)
+            : error;
+        if (!isSolanaError(cause, SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM) || cause.context.code !== code) {
+            throw new Error(`expected ${name}`, { cause: error });
+        }
+        console.log(`  rejected: ${cause.message} (${name})`);
+        return;
     }
-    // The client simulates before sending, so the rejection arrives wrapped in
-    // a simulation error.
-    const cause = unwrapSimulationError(error.cause);
-    console.log(`  rejected: ${cause instanceof Error ? cause.message : String(cause)}`);
-    if (
-        !isSolanaError(cause, SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM) ||
-        cause.context.code !== MESSAGE_EXECUTOR_ERROR__NONCE_MISMATCH
-    ) {
-        throw new Error("expected the executor's NonceMismatch", { cause: error });
-    }
+    throw new Error(`expected ${name}, but the relay landed`);
 }

@@ -23,9 +23,12 @@ use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_commitment_config::CommitmentConfig;
 use solana_keypair::Keypair;
 use solana_message::VersionedMessage;
+use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_system_interface::instruction as system_instruction;
 use solana_transaction::versioned::VersionedTransaction;
+use spl_ed25519_signer_client::instruction::submit as submit_instruction;
+use spl_ed25519_signer_client::message::authorization_message;
 use spl_ed25519_signer_client::signing::sign_and_submit;
 use spl_ed25519_signer_client::ProgrammaticSigner;
 use spl_message_executor_client::instruction::execute;
@@ -103,8 +106,8 @@ fn main() -> Result<()> {
     println!("\n== signed on the cold side ==");
     let transfer = system_instruction::transfer(&pda, &recipient, AMOUNT);
     let execution = execution_message(&pda, &[transfer], nonce)?;
-    let execute = execute(&nonce_account, &pda, &execution);
-    let submit = [sign_and_submit(&execute, &[&authority])?];
+    let wrapped = execute(&nonce_account, &pda, &execution);
+    let submit = [sign_and_submit(&wrapped, &[&authority])?];
     let predicted = next_nonce(&nonce_account, &execution);
     println!(
         "  execution message:  {} bytes, {} instruction (the transfer)",
@@ -131,6 +134,29 @@ fn main() -> Result<()> {
         println!("  expired; a transaction signed alongside the artifact would now be dropped");
     }
 
+    // An edited payment. A relayer that swaps in a larger amount still holds
+    // only the signature over the original, so the Signer program refuses it.
+    println!("\n== relayed with the amount edited ==");
+    let signature = authority
+        .sign_message(&authorization_message(&wrapped, &[authority.pubkey()])?.serialize());
+    let edited = execution_message(
+        &pda,
+        &[system_instruction::transfer(&pda, &recipient, 2 * AMOUNT)],
+        nonce,
+    )?;
+    let edited = authorization_message(
+        &execute(&nonce_account, &pda, &edited),
+        &[authority.pubkey()],
+    )?;
+    let tampered = [submit_instruction(
+        vec![Some(signature)],
+        VersionedMessage::V1(edited),
+    )];
+    expect_rejected(
+        send_transaction(&client, &relayer, &tampered, &[&relayer]),
+        "the Signer's InvalidSignature",
+    )?;
+
     // The hot side. Any funded key can relay; it learns nothing it can change.
     println!("\n== relayed ==");
     let relay_signature = send_transaction(&client, &relayer, &submit, &[&relayer])?;
@@ -152,21 +178,32 @@ fn main() -> Result<()> {
         bail!("the nonce did not advance to the value predicted at signing time");
     }
 
-    // The nonce value the artifact names is gone, so the executor refuses it.
-    // Error 3 is the Executor's NonceMismatch, surfaced through the Signer.
+    // The nonce value the artifact names is gone, so the Executor refuses it.
     println!("\n== relayed again ==");
-    match send_transaction(&client, &relayer, &submit, &[&relayer]) {
-        Ok(signature) => bail!("the replay unexpectedly landed as {signature}"),
+    expect_rejected(
+        send_transaction(&client, &relayer, &submit, &[&relayer]),
+        "the Executor's NonceMismatch",
+    )
+}
+
+/// Fails unless a relay was rejected with custom program error 3, which is
+/// both the Signer's `InvalidSignature` and the Executor's `NonceMismatch`.
+fn expect_rejected(relay: Result<Signature>, expected: &str) -> Result<()> {
+    match relay {
+        Ok(signature) => bail!("expected {expected}, but the relay landed as {signature}"),
         Err(error) => {
             let text = error.to_string();
-            // The RPC appends the program logs; the first line names the error.
-            println!("  rejected: {}", text.lines().next().unwrap_or_default());
             if !text.contains("custom program error: 0x3") {
-                bail!("expected the executor's NonceMismatch (custom program error 0x3)");
+                bail!("expected {expected}, got: {text}");
             }
+            // The RPC appends the program logs; the first line names the error.
+            println!(
+                "  rejected: {} ({expected})",
+                text.lines().next().unwrap_or_default()
+            );
+            Ok(())
         }
     }
-    Ok(())
 }
 
 /// The wire size of a v1 transaction: the message, then one signature per

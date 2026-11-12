@@ -111,7 +111,8 @@ jobs:
         run: just setup-programs
 
       # Every example checks its own result and exits non-zero if the relay did
-      # not land, the nonce did not advance as predicted, or a replay landed.
+      # not land, the nonce did not advance as predicted, or an edited or
+      # replayed authorization landed.
       - name: Run the examples
         run: just demo
 
