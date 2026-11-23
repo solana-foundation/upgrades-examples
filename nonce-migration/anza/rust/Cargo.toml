@@ -20,6 +20,7 @@ anyhow = "1"
 # builds the programs from, so the wire formats on both sides of the RPC cannot
 # drift apart.
 spl-ed25519-signer-client = { git = "https://github.com/solana-program/ed25519-programmatic-signer", rev = "cf46a93238154cc681169f096c4dffd6188f1491" }
+spl-ed25519-signer-interface = { git = "https://github.com/solana-program/ed25519-programmatic-signer", rev = "cf46a93238154cc681169f096c4dffd6188f1491" }
 spl-message-executor-client = { git = "https://github.com/solana-program/ed25519-programmatic-signer", rev = "cf46a93238154cc681169f096c4dffd6188f1491" }
 spl-message-executor-interface = { git = "https://github.com/solana-program/ed25519-programmatic-signer", rev = "cf46a93238154cc681169f096c4dffd6188f1491" }
 spl-nonce-client = { git = "https://github.com/solana-program/ed25519-programmatic-signer", rev = "cf46a93238154cc681169f096c4dffd6188f1491" }
@@ -48,6 +49,7 @@ solana-signature = "3.4.1"
 solana-signer = "3.0.1"
 solana-system-interface = { version = "3.2.0", features = ["bincode"] }
 solana-transaction = { version = "4.1.6", features = ["wincode"] }
+solana-transaction-error = "3.3.2"
 solana-transaction-status-client-types = "4.2.1"
 
 [dev-dependencies]

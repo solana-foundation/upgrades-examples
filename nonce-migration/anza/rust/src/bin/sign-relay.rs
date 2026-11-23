@@ -21,17 +21,22 @@ use psigner::durable_nonce::{
 use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_commitment_config::CommitmentConfig;
+use solana_instruction::error::InstructionError;
 use solana_keypair::Keypair;
 use solana_message::VersionedMessage;
+use solana_rpc_client_api::client_error::Error as ClientError;
 use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_system_interface::instruction as system_instruction;
 use solana_transaction::versioned::VersionedTransaction;
+use solana_transaction_error::TransactionError;
 use spl_ed25519_signer_client::instruction::submit as submit_instruction;
 use spl_ed25519_signer_client::message::authorization_message;
 use spl_ed25519_signer_client::signing::sign_and_submit;
 use spl_ed25519_signer_client::ProgrammaticSigner;
+use spl_ed25519_signer_interface::error::Error as SignerError;
 use spl_message_executor_client::instruction::execute;
+use spl_message_executor_interface::error::Error as ExecutorError;
 
 const AMOUNT: u64 = 10_000_000;
 
@@ -153,6 +158,7 @@ fn main() -> Result<()> {
     )];
     expect_rejected(
         send_transaction(&client, &relayer, &tampered, &[&relayer]),
+        SignerError::InvalidSignature as u32,
         "the Signer's InvalidSignature",
     )?;
 
@@ -182,27 +188,29 @@ fn main() -> Result<()> {
     println!("\n== relayed again ==");
     expect_rejected(
         send_transaction(&client, &relayer, &submit, &[&relayer]),
+        ExecutorError::NonceMismatch as u32,
         "the Executor's NonceMismatch",
     )
 }
 
-/// Fails unless a relay was rejected with custom program error 3, which is
-/// both the Signer's `InvalidSignature` and the Executor's `NonceMismatch`.
-fn expect_rejected(relay: Result<Signature>, expected: &str) -> Result<()> {
-    match relay {
-        Ok(signature) => bail!("expected {expected}, but the relay landed as {signature}"),
-        Err(error) => {
-            let text = error.to_string();
-            if !text.contains("custom program error: 0x3") {
-                bail!("expected {expected}, got: {text}");
-            }
-            // The RPC appends the program logs; the first line names the error.
-            println!(
-                "  rejected: {} ({expected})",
-                text.lines().next().unwrap_or_default()
-            );
+/// Fails unless a relay was rejected with the custom program error `code`.
+/// Both errors here are number 3, in different programs.
+fn expect_rejected(relay: Result<Signature>, code: u32, name: &str) -> Result<()> {
+    let error = match relay {
+        Ok(signature) => bail!("expected {name}, but the relay landed as {signature}"),
+        Err(error) => error,
+    };
+    let rejection = error
+        .downcast_ref::<ClientError>()
+        .and_then(ClientError::get_transaction_error);
+    match rejection {
+        Some(TransactionError::InstructionError(_, InstructionError::Custom(found)))
+            if found == code =>
+        {
+            println!("  rejected: custom program error {found} ({name})");
             Ok(())
         }
+        _ => Err(error.context(format!("expected {name}"))),
     }
 }
 
