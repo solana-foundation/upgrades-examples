@@ -101,10 +101,9 @@ pub fn send_transaction(
 
 /// Blocks until `blockhash` can no longer be used in a transaction.
 ///
-/// A blockhash lives for 150 slots, about a minute on a local validator. The
-/// examples capture one when the cold key signs and wait it out before
-/// relaying, which is the shortest demonstration that the signed artifact does
-/// not expire with it.
+/// A blockhash lives for 150 slots. The examples capture one when the cold key
+/// signs and wait it out before relaying, which is the shortest demonstration
+/// that the signed artifact does not expire with it.
 pub fn wait_for_blockhash_expiry(client: &RpcClient, blockhash: &Hash) -> Result<()> {
     loop {
         if !client.is_blockhash_valid(blockhash, CommitmentConfig::confirmed())? {

@@ -53,7 +53,7 @@ The five operations in the directory README are mostly calls into the official c
 | Compute the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 
-`sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire, about a minute on a local validator, which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
+`sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
 `token-transfer` is the withdrawal most nonce users run: tokens, not SOL. The PDA holds 1,000 of a Token program mint, the kind USDC is. The cold key signs one action that creates the recipient's token account, with the PDA paying the rent, and moves 250 into it; the hot key relays it. It costs about 90,000 compute units against roughly 54,000 for a SOL transfer, most of it the account creation. It does not wait for a blockhash to expire; `sign-relay` already shows that.
 
@@ -111,7 +111,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | `solana-message` | 5.1.0 | the version the client crates use; one `v1::Message` type across the client crates and these examples |
 | `@solana/kit` | 8.6.0 | `createTransactionMessage({ version: 1 })`, the v1 compiled-message codec, instruction plans, and `signBytes` |
 | `@solana/kit-plugin-rpc`, `@solana/kit-plugin-signer` | 0.23.0 | the plugin client: a funded payer, and v1 transactions planned, sized by simulation, and sent |
-| `@solana-program/system` | 0.15.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
+| `@solana-program/system` | 0.16.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
 | `spl-token-interface` | 3.0.0 | the version the pinned Anza CLI builds `migrate token` with; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the Token program plugin; its `createMint`, `mintToATA`, and `transferToATA` instruction plans |
 

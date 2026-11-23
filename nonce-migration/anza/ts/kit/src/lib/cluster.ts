@@ -73,10 +73,9 @@ export async function assertProgramsDeployed(rpc: Client['rpc']): Promise<void> 
 /**
  * Resolves once `blockhash` can no longer be used in a transaction.
  *
- * A blockhash lives for 150 slots, about a minute on a local validator. The
- * examples capture one when the cold key signs and wait it out before
- * relaying, which is the shortest demonstration that the signed artifact does
- * not expire with it.
+ * A blockhash lives for 150 slots. The examples capture one when the cold key
+ * signs and wait it out before relaying, which is the shortest demonstration
+ * that the signed artifact does not expire with it.
  */
 export async function waitForBlockhashExpiry(rpc: Client['rpc'], blockhash: Blockhash): Promise<void> {
     for (;;) {
