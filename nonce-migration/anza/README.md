@@ -50,7 +50,7 @@ The five operations in the directory README are mostly calls into the official c
 | Create a nonce account | `spl_nonce::create_nonce_account` | `createNonceAccount` in `spl-nonce.ts` |
 | Build the action's message | `signer::execution_message` | `executionMessage` in `signer.ts` |
 | Sign on the cold side | `execute`, then `sign_and_submit` | `authorizationMessage` in `signer.ts`, then `signBytes` |
-| Predict the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
+| Compute the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire, about a minute on a local validator, which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
@@ -132,7 +132,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value predicted at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected. CI runs `just check` and `just demo`.
 
 ## Layout
 
@@ -146,7 +146,7 @@ ts/kit/test/          offline tests
 scripts/              validator and program build
 ```
 
-Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other: `cluster` connects with a funded key and checks the programs are deployed; `spl_nonce` (`spl-nonce` in TypeScript) creates SPL nonce accounts and predicts the next value; `signer` builds the execution message, and in TypeScript the authorization message; `token` holds the token helpers the examples need, which in Rust includes the mint setup and the PDA's withdrawal; `durable_nonce` (`durable-nonce`) is the durable nonce flow for comparison.
+Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other: `cluster` connects with a funded key and checks the programs are deployed; `spl_nonce` (`spl-nonce` in TypeScript) creates SPL nonce accounts and computes the next value; `signer` builds the execution message, and in TypeScript the authorization message; `token` holds the token helpers the examples need, which in Rust includes the mint setup and the PDA's withdrawal; `durable_nonce` (`durable-nonce`) is the durable nonce flow for comparison.
 
 ## Additional resources
 

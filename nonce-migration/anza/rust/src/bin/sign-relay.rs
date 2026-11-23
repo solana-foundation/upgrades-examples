@@ -5,7 +5,7 @@
 //! transaction, the flow being replaced. Then as a programmatic signer
 //! authorization: the cold key signs an authorization message, a hot relayer
 //! wraps it in a transaction with a fresh blockhash, and the PDA that acts for
-//! the cold key pays. Afterwards the nonce has advanced to the value predicted
+//! the cold key pays. Afterwards the nonce has advanced to the value computed
 //! at signing time, and relaying the same artifact again is rejected.
 //!
 //! Run with `just sign-relay`.
@@ -108,7 +108,7 @@ fn main() -> Result<()> {
     let execution = execution_message(&pda, &[transfer], nonce)?;
     let wrapped = execute(&nonce_account, &pda, &execution);
     let submit = [sign_and_submit(&wrapped, &[&authority])?];
-    let predicted = next_nonce(&nonce_account, &execution);
+    let next_nonce_value = next_nonce(&nonce_account, &execution);
     println!(
         "  execution message:  {} bytes, {} instruction (the transfer)",
         execution.serialize().len(),
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
         "  Submit instruction: {} bytes of data, holding the authorization message and the signature",
         submit[0].data.len()
     );
-    println!("  next nonce:         {predicted} (known before anything is sent)");
+    println!("  next nonce:         {next_nonce_value} (known before anything is sent)");
 
     // A transaction signed now would die with this blockhash. The artifact has
     // no blockhash, so it does not.
@@ -173,9 +173,9 @@ fn main() -> Result<()> {
     }
     let advanced = fetch_nonce(&client, &nonce_account)?.nonce;
     println!("  nonce after:       {advanced}");
-    println!("  predicted:         {predicted}");
-    if advanced != predicted {
-        bail!("the nonce did not advance to the value predicted at signing time");
+    println!("  expected:          {next_nonce_value}");
+    if advanced != next_nonce_value {
+        bail!("the nonce did not advance to the value computed at signing time");
     }
 
     // The nonce value the artifact names is gone, so the Executor refuses it.

@@ -1,5 +1,5 @@
 /**
- * Creating and reading SPL nonce accounts, and predicting their next value.
+ * Creating and reading SPL nonce accounts, and computing their next value.
  *
  * An SPL nonce account belongs to the Nonce program, not the System program.
  * It stores a value, an authority, and the slot it was created in. The value

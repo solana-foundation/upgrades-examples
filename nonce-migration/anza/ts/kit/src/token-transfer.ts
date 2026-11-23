@@ -69,7 +69,7 @@ const withdrawal = await getTransferToATAInstructionPlanAsync({
 const execution = executionMessage(pda, withdrawal, nonce);
 const authorization = authorizationMessage(execution, nonceAccount, pda, authority.address);
 const signature = await signBytes(authority.keyPair.privateKey, authorization);
-const predicted = await nextNonce(nonceAccount, nonce, execution);
+const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 console.log(
     `  execution message:     ${execution.length} bytes, 2 instructions (CreateAssociatedTokenAccountIdempotent, TransferChecked)`,
 );
@@ -101,7 +101,7 @@ if (left !== SUPPLY - AMOUNT) {
 }
 const { nonce: advanced } = (await relayer.nonce.accounts.nonce.fetch(nonceAccount)).data;
 console.log(`  nonce after:       ${advanced}`);
-console.log(`  predicted:         ${predicted}`);
-if (advanced !== predicted) {
-    throw new Error('the nonce did not advance to the value predicted at signing time');
+console.log(`  expected:          ${nextNonceValue}`);
+if (advanced !== nextNonceValue) {
+    throw new Error('the nonce did not advance to the value computed at signing time');
 }

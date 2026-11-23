@@ -6,7 +6,7 @@
  * transaction, the flow being replaced. Then as a programmatic signer
  * authorization: the cold key signs an authorization message, a hot relayer
  * wraps it in a transaction with a fresh blockhash, and the PDA that acts for
- * the cold key pays. Afterwards the nonce has advanced to the value predicted
+ * the cold key pays. Afterwards the nonce has advanced to the value computed
  * at signing time, and relaying the same artifact again is rejected.
  *
  * Run with `just ts-sign-relay`.
@@ -96,7 +96,7 @@ const transfer = getTransferSolInstruction({ amount: AMOUNT, destination: recipi
 const execution = executionMessage(pda, singleInstructionPlan(transfer), nonce);
 const authorization = authorizationMessage(execution, nonceAccount, pda, authority.address);
 const signature = await signBytes(authority.keyPair.privateKey, authorization);
-const predicted = await nextNonce(nonceAccount, nonce, execution);
+const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 const decodedAuthorization = getCompiledTransactionMessageDecoder().decode(authorization);
 if (decodedAuthorization.version !== 1) {
     throw new Error('the authorization message must be v1');
@@ -107,7 +107,7 @@ console.log(
     `  signers:               ${JSON.stringify(decodedAuthorization.staticAccounts.slice(0, decodedAuthorization.header.numSignerAccounts))}`,
 );
 console.log(`  signature:             ${getBase58Decoder().decode(signature)}`);
-console.log(`  next nonce:            ${predicted} (known before anything is sent)`);
+console.log(`  next nonce:            ${nextNonceValue} (known before anything is sent)`);
 
 // A transaction signed now would die with this blockhash. The artifact has no
 // blockhash, so it does not.
@@ -166,9 +166,9 @@ if (balance !== 2n * AMOUNT) {
 }
 const { nonce: advanced } = (await relayer.nonce.accounts.nonce.fetch(nonceAccount)).data;
 console.log(`  nonce after:       ${advanced}`);
-console.log(`  predicted:         ${predicted}`);
-if (advanced !== predicted) {
-    throw new Error('the nonce did not advance to the value predicted at signing time');
+console.log(`  expected:          ${nextNonceValue}`);
+if (advanced !== nextNonceValue) {
+    throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
 // The nonce value the artifact names is gone, so the Executor refuses it.

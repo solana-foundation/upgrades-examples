@@ -73,7 +73,7 @@ fn main() -> Result<()> {
         nonce,
     )?;
     let submit = sign_and_submit(&execute(&nonce_account, &pda, &execution), &[&authority])?;
-    let predicted = next_nonce(&nonce_account, &execution);
+    let next_nonce_value = next_nonce(&nonce_account, &execution);
     println!(
         "  execution message:  {} bytes, 2 instructions (CreateAssociatedTokenAccountIdempotent, TransferChecked)",
         execution.serialize().len()
@@ -104,9 +104,9 @@ fn main() -> Result<()> {
     }
     let advanced = fetch_nonce(&client, &nonce_account)?.nonce;
     println!("  nonce after:       {advanced}");
-    println!("  predicted:         {predicted}");
-    if advanced != predicted {
-        bail!("the nonce did not advance to the value predicted at signing time");
+    println!("  expected:          {next_nonce_value}");
+    if advanced != next_nonce_value {
+        bail!("the nonce did not advance to the value computed at signing time");
     }
     Ok(())
 }
