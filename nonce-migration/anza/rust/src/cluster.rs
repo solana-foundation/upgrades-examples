@@ -122,6 +122,7 @@ pub fn compute_units(client: &RpcClient, signature: &Signature) -> Result<Option
             commitment: Some(CommitmentConfig::confirmed()),
             encoding: Some(UiTransactionEncoding::Json),
             max_supported_transaction_version: Some(1),
+            min_context_slot: None,
         },
     )?;
     Ok(

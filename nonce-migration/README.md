@@ -48,7 +48,7 @@ Afterwards, old System nonce accounts can be closed with `WithdrawNonceAccount` 
 
 - **A failed action can be relayed again.** If the action fails, the whole relay rolls back, nonce included, and the same artifact lands later once conditions change. A durable nonce transaction burns its nonce on failure. A deadline instruction in the action is the mitigation.
 - **The relayer chooses when, with which blockhash, from which fee payer, and with what compute budget.** It cannot change the action, the amount, the recipient, or the nonce without invalidating the signature.
-- **Nothing is released yet.** The Anza programs are on devnet only, under one upgrade key, unaudited; only the JavaScript client is published, at 1.0.0, and the Rust crates are placeholders. These examples pin the commit that client was built from and build the programs from it. Do not pre-sign against devnet addresses expecting them to hold.
+- **The programs are not released yet.** The Anza programs are on devnet only, under one upgrade key, unaudited. The JavaScript and Rust clients are published at 1.0.0; these examples build the programs from the commit the Rust crates were released at. Do not pre-sign against devnet addresses expecting them to hold.
 
 ## Quick start
 

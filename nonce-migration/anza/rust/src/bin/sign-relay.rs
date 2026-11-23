@@ -21,7 +21,7 @@ use psigner::durable_nonce::{
 use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_commitment_config::CommitmentConfig;
-use solana_instruction::error::InstructionError;
+use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
 use solana_message::VersionedMessage;
 use solana_rpc_client_api::client_error::Error as ClientError;

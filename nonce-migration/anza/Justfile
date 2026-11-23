@@ -1,10 +1,10 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 solana_version := "4.4.1"
-# solana-program/ed25519-programmatic-signer at the clients-js@v1.0.0 tag: the
-# commit the Rust client crates and the programs the validator loads come from,
-# and the one the npm package the TypeScript examples depend on was built from.
-psigner_commit := "cf46a93238154cc681169f096c4dffd6188f1491"
+# solana-program/ed25519-programmatic-signer at the signer-client@v1.0.0 tag,
+# where the Rust client crates were released: the commit the programs the
+# validator loads are built from.
+psigner_commit := "41e1a0b260a72f80e97bb571c9f7d2baae572ee7"
 
 export PSIGNER_COMMIT := psigner_commit
 

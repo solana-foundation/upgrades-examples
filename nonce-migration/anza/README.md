@@ -30,7 +30,7 @@ just sign-relay       # …then any example below
 just validator-stop
 ```
 
-The TypeScript examples use the released [`@solana-program/ed25519-programmatic-signer`](https://www.npmjs.com/package/@solana-program/ed25519-programmatic-signer) client. The programs and the Rust client crates have no release yet, so they are pinned to the commit that client was built from, the [`clients-js@v1.0.0`](https://github.com/solana-program/ed25519-programmatic-signer/tree/clients-js%40v1.0.0) tag, named once in the `Justfile`. `just setup-programs` builds the programs from it with `cargo build-sbf`.
+The examples use the released clients: [`@solana-program/ed25519-programmatic-signer`](https://www.npmjs.com/package/@solana-program/ed25519-programmatic-signer) from npm and the `spl-ed25519-signer`, `spl-message-executor`, and `spl-nonce` client and interface crates from crates.io. The programs have no binary release, so `just setup-programs` builds them with `cargo build-sbf` from the commit the Rust crates were released at, the [`signer-client@v1.0.0`](https://github.com/solana-program/ed25519-programmatic-signer/tree/signer-client%40v1.0.0) tag, named once in the `Justfile`.
 
 ## Examples
 
@@ -103,10 +103,12 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | Component | Minimum | Why |
 |---|---|---|
 | Anza CLI / Agave | 4.4.1 | the current stable release; v1 transactions, which the relay uses, need 4.2.0 |
-| `ed25519-programmatic-signer` | commit `cf46a93` (11 Nov 2026), tag `clients-js@v1.0.0` | the Rust client crates and the programs come from this commit; they have no release of their own |
-| `@solana-program/ed25519-programmatic-signer` | 1.0.0 | the generated kit client and program plugins for the three programs, built from the same commit |
-| Rust | 1.93.1 | the toolchain the pinned Anza workspace builds with |
-| `solana-message` | 4.4.1 | the version the pinned Anza workspace uses; one `v1::Message` type across the client crates and these examples |
+| `ed25519-programmatic-signer` | commit `41e1a0b` (19 Nov 2026), tag `signer-client@v1.0.0` | the programs are built from this commit; they have no binary release |
+| `spl-ed25519-signer-client`, `spl-message-executor-client`, `spl-nonce-client` | 1.0.0 | the Rust client crates |
+| `spl-ed25519-signer-interface`, `spl-message-executor-interface`, `spl-nonce-interface` | 2.0.0 | program errors, nonce state, and the next-nonce derivation |
+| `@solana-program/ed25519-programmatic-signer` | 1.0.0 | the generated kit client and program plugins for the three programs |
+| Rust | 1.100.0 | the toolchain the client crates' workspace builds with |
+| `solana-message` | 5.1.0 | the version the client crates use; one `v1::Message` type across the client crates and these examples |
 | `@solana/kit` | 8.6.0 | `createTransactionMessage({ version: 1 })`, the v1 compiled-message codec, instruction plans, and `signBytes` |
 | `@solana/kit-plugin-rpc`, `@solana/kit-plugin-signer` | 0.23.0 | the plugin client: a funded payer, and v1 transactions planned, sized by simulation, and sent |
 | `@solana-program/system` | 0.15.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |

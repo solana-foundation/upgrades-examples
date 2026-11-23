@@ -2,8 +2,7 @@
 # Produces the three programmatic signer programs the local validator loads.
 #
 # The programs are not distributed as binaries, so this clones the commit the
-# Rust and TypeScript clients in this directory were built from into .local/eps
-# and runs `cargo build-sbf` on each program, as the repo's own Makefile does.
+# Rust client crates were released at into .local/eps and runs `cargo build-sbf` on each program, as the repo's own Makefile does.
 # The result is .local/programs/<name>.so, and validator.sh refuses to start
 # without all three.
 set -euo pipefail
