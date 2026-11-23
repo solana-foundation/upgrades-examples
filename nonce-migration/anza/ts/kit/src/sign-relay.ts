@@ -89,9 +89,9 @@ console.log(`  nonce:         ${nonce}`);
 // The cold side. Nothing below needs an RPC: the execution message, the
 // authorization message, and the signature can all be produced air-gapped
 // once the nonce value is known.
-console.log('\n== signed on the cold side ==');
-// The action is an ordinary System transfer out of the PDA. The builder wants
-// a signer for the source and the PDA has no key, so a noop signer names it.
+console.log('\n== signing on the cold side ==');
+// The action is an ordinary System transfer out of the PDA. The source is the
+// PDA, which has no key, so use a noop signer.
 const transfer = getTransferSolInstruction({ amount: AMOUNT, destination: recipient, source: createNoopSigner(pda) });
 const execution = executionMessage(pda, singleInstructionPlan(transfer), nonce);
 const authorization = authorizationMessage(execution, nonceAccount, pda, authority.address);
@@ -109,13 +109,13 @@ console.log(
 console.log(`  signature:             ${getBase58Decoder().decode(signature)}`);
 console.log(`  next nonce:            ${nextNonceValue} (known before anything is sent)`);
 
-// A transaction signed now would die with this blockhash. The artifact has no
-// blockhash, so it does not.
+// A transaction signed now would expire with this blockhash. The artifact does
+// not use a blockhash as its lifetime, so it does not.
 const { value: blockhashAtSigning } = await relayer.rpc.getLatestBlockhash().send();
 if (process.env.PSIGNER_SKIP_EXPIRY) {
     console.log(`\n== skipping the wait for blockhash ${blockhashAtSigning.blockhash} to expire ==`);
 } else {
-    console.log(`\n== waiting for blockhash ${blockhashAtSigning.blockhash} to expire (about a minute) ==`);
+    console.log(`\n== waiting for blockhash ${blockhashAtSigning.blockhash} to expire (150 slots) ==`);
     await waitForBlockhashExpiry(relayer.rpc, blockhashAtSigning.blockhash);
     console.log('  expired; a transaction signed alongside the artifact would now be dropped');
 }
@@ -139,9 +139,10 @@ await expectRejected(
     "the Signer's InvalidSignature",
 );
 
-// The hot side. Any funded key can relay; it learns nothing it can change.
-// The client wraps the Submit instruction in a v1 transaction with a fresh
-// blockhash, measures its resource limits by simulation, signs, and sends.
+// The hot side. Any funded key can relay. It cannot modify the authorization
+// message, because the cold key has signed it. The client wraps the Submit
+// instruction in a v1 transaction with a fresh blockhash, measures its
+// resource limits by simulation, signs, and sends.
 console.log('\n== relayed ==');
 const submit = relayer.ed25519Signer.instructions.submit({ message: authorization, signatures: [signature] });
 const { context: relay } = await relayer.sendTransaction(submit);

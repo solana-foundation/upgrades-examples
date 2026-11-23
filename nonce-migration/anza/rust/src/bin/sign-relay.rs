@@ -103,16 +103,15 @@ fn main() -> Result<()> {
     // the action is compiled into an execution message, wrapped in an Execute
     // instruction, and `sign_and_submit` builds the authorization message,
     // signs it with the cold key, and returns the Submit instruction to relay.
-    println!("\n== signed on the cold side ==");
+    println!("\n== signing on the cold side ==");
     let transfer = system_instruction::transfer(&pda, &recipient, AMOUNT);
     let execution = execution_message(&pda, &[transfer], nonce)?;
     let wrapped = execute(&nonce_account, &pda, &execution);
     let submit = [sign_and_submit(&wrapped, &[&authority])?];
     let next_nonce_value = next_nonce(&nonce_account, &execution);
     println!(
-        "  execution message:  {} bytes, {} instruction (the transfer)",
-        execution.serialize().len(),
-        execution.instructions.len()
+        "  execution message:  {} bytes, 1 instruction (the transfer)",
+        execution.serialize().len()
     );
     println!(
         "  Submit instruction: {} bytes of data, holding the authorization message and the signature",
@@ -120,13 +119,13 @@ fn main() -> Result<()> {
     );
     println!("  next nonce:         {next_nonce_value} (known before anything is sent)");
 
-    // A transaction signed now would die with this blockhash. The artifact has
-    // no blockhash, so it does not.
+    // A transaction signed now would expire with this blockhash. The artifact
+    // does not use a blockhash as its lifetime, so it does not.
     let blockhash_at_signing = client.get_latest_blockhash()?;
     if std::env::var_os("PSIGNER_SKIP_EXPIRY").is_some() {
         println!("\n== skipping the wait for blockhash {blockhash_at_signing} to expire ==");
     } else {
-        println!("\n== waiting for blockhash {blockhash_at_signing} to expire (about a minute) ==");
+        println!("\n== waiting for blockhash {blockhash_at_signing} to expire (150 slots) ==");
         wait_for_blockhash_expiry(&client, &blockhash_at_signing)?;
         if client.is_blockhash_valid(&blockhash_at_signing, CommitmentConfig::confirmed())? {
             bail!("the blockhash is still valid");
@@ -157,7 +156,8 @@ fn main() -> Result<()> {
         "the Signer's InvalidSignature",
     )?;
 
-    // The hot side. Any funded key can relay; it learns nothing it can change.
+    // The hot side. Any funded key can relay. It cannot modify the
+    // authorization message, because the cold key has signed it.
     println!("\n== relayed ==");
     let relay_signature = send_transaction(&client, &relayer, &submit, &[&relayer])?;
     println!("  landed:            {relay_signature}");

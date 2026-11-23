@@ -54,9 +54,10 @@ console.log(`  nonce account: ${nonceAccount}`);
 console.log(`  nonce:         ${nonce}`);
 
 // The cold side: `transferToATA` from the token client, with the PDA as payer
-// and owner (a noop signer names it, since it has no key), compiled into an execution message, wrapped in an authorization
-// message, and signed. Nothing here needs an RPC.
-console.log('\n== signed on the cold side ==');
+// and owner (a noop signer, since it has no key), compiled into an execution
+// message, wrapped in an authorization message, and signed. Nothing here needs
+// an RPC.
+console.log('\n== signing on the cold side ==');
 const pdaSigner = createNoopSigner(pda);
 const withdrawal = await getTransferToATAInstructionPlanAsync({
     amount: AMOUNT,

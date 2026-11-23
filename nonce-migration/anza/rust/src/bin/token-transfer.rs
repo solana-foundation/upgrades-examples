@@ -66,7 +66,7 @@ fn main() -> Result<()> {
     // The cold side: two ordinary token instructions with the PDA as payer and
     // owner, compiled into an execution message, wrapped in an Execute
     // instruction, and signed. Nothing here needs an RPC.
-    println!("\n== signed on the cold side ==");
+    println!("\n== signing on the cold side ==");
     let execution = execution_message(
         &pda,
         &transfer_to_ata(&mint, &pda, &recipient, AMOUNT)?,
