@@ -1,0 +1,54 @@
+[package]
+name = "psigner"
+edition = "2021"
+license = "MIT"
+publish = false
+version = "0.1.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+anyhow = "1"
+
+# The released Anza client and interface crates. scripts/setup-programs.sh
+# builds the programs from the commit they were released at.
+spl-ed25519-signer-client = "1.0.0"
+spl-ed25519-signer-interface = "2.0.0"
+spl-message-executor-client = "1.0.0"
+spl-message-executor-interface = "2.0.0"
+spl-nonce-client = "1.0.0"
+spl-nonce-interface = "2.0.0"
+
+# The token crates the pinned Anza CLI builds `migrate token` with, at the
+# versions its workspace pins.
+spl-associated-token-account-interface = "2.0.0"
+spl-token-interface = "3.0.0"
+
+# The versions the pinned Anza workspace builds against, so one `Address` and
+# one `v1::Message` type flow through the client crates and this package.
+solana-address = { version = "2.9.0", features = ["atomic", "copy", "decode"] }
+solana-commitment-config = "3.1.1"
+solana-hash = "4.7.0"
+solana-instruction = "4.0.0"
+solana-instruction-error = "3.1.0"
+solana-keypair = "4.0.1"
+solana-message = { version = "5.1.0", features = ["wincode"] }
+solana-nonce = "3.4.0"
+solana-program-pack = "3.1.0"
+solana-rpc-client = "4.4.1"
+solana-rpc-client-api = "4.4.1"
+solana-rpc-client-nonce-utils = "4.4.1"
+solana-sdk-ids = "3.1.0"
+solana-signature = "3.6.0"
+solana-signer = "4.0.0"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+solana-transaction = { version = "5.1.0", features = ["wincode"] }
+solana-transaction-error = "4.1.0"
+solana-transaction-status-client-types = "4.4.1"
+
+[dev-dependencies]
+base64 = "0.22"
