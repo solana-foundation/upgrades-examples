@@ -1,0 +1,5 @@
+packages:
+  - web3js-v3
+
+onlyBuiltDependencies:
+  - esbuild

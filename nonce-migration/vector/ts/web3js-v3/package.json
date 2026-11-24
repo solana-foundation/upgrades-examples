@@ -1,0 +1,15 @@
+{
+    "name": "vector-examples-web3js-v3",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT",
+    "type": "module",
+    "scripts": {
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@noble/curves": "^1.8.0",
+        "@noble/hashes": "^1.7.0",
+        "@solana/web3.js": "^3.2.1"
+    }
+}
