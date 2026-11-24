@@ -20,7 +20,7 @@ export const DEFAULT_RPC_SUBSCRIPTIONS_URL = 'ws://127.0.0.1:8900';
  * states them; the SDK's own default is the 1.4 million maximum. They live in
  * the message, not in an instruction, so the cold key's digest does not cover
  * them and the relayer chooses. The relay of a SOL transfer costs about 17,000
- * compute units, a token transfer about 33,000, and both load the 580 KB
+ * compute units, a token transfer 32,000 to 36,000, and both load the 580 KB
  * program.
  */
 const LIMITS: V1Limits = { computeUnitLimit: 200_000, loadedAccountsDataSizeLimit: 4 * 1024 * 1024 };
