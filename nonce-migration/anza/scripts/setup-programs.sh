@@ -40,8 +40,11 @@ if all_present && [[ "$(cat "$STAMP" 2> /dev/null)" == "$SOURCE" ]]; then
     exit 0
 fi
 
+# Not `git clone`: in CI the Rust cache restores eps/target before this runs,
+# and clone refuses a directory that is not empty.
 if [[ ! -d "$LOCAL/eps/.git" ]]; then
-    git clone --quiet "$REPO" "$LOCAL/eps"
+    git init --quiet "$LOCAL/eps"
+    git -C "$LOCAL/eps" remote add origin "$REPO"
 fi
 git -C "$LOCAL/eps" fetch --quiet origin "$COMMIT"
 git -C "$LOCAL/eps" checkout --quiet "$COMMIT"

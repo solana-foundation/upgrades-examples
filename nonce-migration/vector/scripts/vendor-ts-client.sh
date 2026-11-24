@@ -19,8 +19,11 @@ COMMIT="${VECTOR_COMMIT:?set VECTOR_COMMIT to the pinned vector commit}"
 DEST="$ROOT/ts/web3js-v3/src/client"
 FILES=(bytes.ts scheme.ts instructions.ts digest.ts transaction.ts schemes/ed25519.ts)
 
+# Not `git clone`: in CI the Rust cache restores vector/target before this runs,
+# and clone refuses a directory that is not empty.
 if [[ ! -d "$LOCAL/vector/.git" ]]; then
-    git clone --quiet "$REPO" "$LOCAL/vector"
+    git init --quiet "$LOCAL/vector"
+    git -C "$LOCAL/vector" remote add origin "$REPO"
 fi
 git -C "$LOCAL/vector" fetch --quiet origin "$COMMIT"
 git -C "$LOCAL/vector" checkout --quiet "$COMMIT"
