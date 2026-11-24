@@ -39,6 +39,7 @@ Vector has no release: no tags, nothing on crates.io or npm, and the program is 
 | What | Rust | TypeScript |
 |---|---|---|
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject an edited relay and a replay | `just sign-relay` | `just ts-sign-relay` |
+| Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/web3js-v3/src/`](ts/web3js-v3/src).
 
@@ -54,8 +55,11 @@ The operations in the directory README are calls into the Vector SDK; the shared
 | Sign on the cold side | `sign_advance_instruction_ed25519` | `signAdvanceInstructionEd25519` |
 | Compute the next nonce | `advance_vector_digest` | `advanceVectorDigest` |
 | Relay on the hot side | send the two instructions | send the two instructions |
+| Build the token instructions | `spl-token-interface`, `spl-associated-token-account-interface` | `@solana-program/token`, converted by `toTransactionInstructions` in `token.ts` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through Vector, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that what the cold key signed outlives one. Set `VECTOR_SKIP_EXPIRY=true` to skip the wait. Before the relay it sends the same signature with the amount doubled, and afterwards it sends the relay a second time; both must be rejected.
+
+`token-transfer` is the withdrawal most nonce users run: tokens, not SOL. The system PDA holds 1,000 of a Token program mint, the kind USDC is. The cold key signs one action that creates the recipient's token account, with the system PDA paying the rent, and moves 250 into it; the hot key relays it. It costs about 33,000 compute units against about 17,000 for a SOL transfer, most of the difference the account creation. The `Passthrough` data grows from 19 bytes to 21, because it holds each instruction's data and account count while the accounts themselves are listed on the instruction.
 
 ## The two instructions
 
@@ -90,13 +94,17 @@ The next nonce is known before anything is sent because it is the digest the col
 
 **The relayer cannot add a Compute Budget instruction.** The digest covers every top-level instruction. On a v1 transaction that is not a restriction, because the limits and the priority fee are fields of the message and the digest does not cover them. On a legacy transaction they are instructions, so the cold key has to sign them in.
 
-**Unset v1 limits are zero.** The compute unit limit and the loaded-accounts limit have to be stated. The SDK's `createV1Transaction` defaults to the maximum of each; the examples request 200,000 compute units and 4 MB. A SOL transfer uses about 17,000 compute units and loads the 580 KB program.
+**Unset v1 limits are zero.** The compute unit limit and the loaded-accounts limit have to be stated. The SDK's `createV1Transaction` defaults to the maximum of each; the examples request 200,000 compute units and 4 MB. A SOL transfer uses about 17,000 compute units, a token transfer that creates the recipient's account about 33,000, and both load the 580 KB program.
 
 **The cold key signs a hash.** A hardware wallet shows `vector:` and 32 bytes, not the transfer. `verify_advance_signature` in the Rust SDK checks a signature against a set of instructions offline, with the program's own code, and returns the next nonce. The TypeScript SDK has `verifyAdvanceTransaction`, which is not among the vendored files.
 
 **Name the fee payer only if the action does.** The digest covers the fee payer when it is also an account of a signed instruction, a refund to the relayer for example. Pass it as the last argument of the signing functions in that case, and only that key can relay. In these examples it is not, so any funded key can.
 
 **One vector account, one action in flight.** It holds one nonce, so a second signed action is valid only after the first lands. Vector's nonce accounts lift that; they are not used here yet.
+
+**The system PDA pays rent, so keep it in SOL.** It is a System-owned address with lamports, so a `Passthrough` can carry `CreateAssociatedTokenAccountIdempotent` with the system PDA as payer, which is how `token-transfer` creates the recipient's account. A system PDA that holds only tokens cannot do that. The token accounts belong to the system PDA, not to the vector account.
+
+**No token client is written for `@solana/web3.js` 3.** `@solana/spl-token` still requires web3.js 1, so the TypeScript example builds its token instructions with `@solana-program/token`, the `@solana/kit` client. web3.js 3 is built on kit and its own compiler accepts kit instructions, but the Vector SDK's builders take only `TransactionInstruction`, and web3.js does not export its converter. [`ts/web3js-v3/src/lib/token.ts`](ts/web3js-v3/src/lib/token.ts) has a hand-written one, `toTransactionInstructions`, until one of the two changes.
 
 **The TypeScript SDK is not on npm and targets `@solana/web3.js` 3, not `@solana/kit`.** [`scripts/vendor-ts-client.sh`](scripts/vendor-ts-client.sh) copies the six source files the Ed25519 scheme needs out of the pinned commit. The SDK's index and its offline verifier import every signature scheme, and with them the post-quantum libraries; the examples need neither. On crates.io, `vector-core` is an unrelated project, so the Rust SDK is a git dependency.
 
@@ -114,6 +122,9 @@ The next nonce is known before anything is sent because it is the digest the col
 | `solana-message` | 5.1.0 | the version `nonce-migration/anza` uses; `v1::Message` for every transaction |
 | `@solana/web3.js` | 3.2.1 | the SDK's peer dependency; `compileToV1Message` and v1 `VersionedTransaction` |
 | `@noble/curves`, `@noble/hashes` | 1.8.0, 1.7.0 | what the vendored SDK files import for Ed25519 and SHA-256 |
+| `spl-token-interface` | 3.0.0 | the version `nonce-migration/anza` uses; `spl-associated-token-account-interface` 2.0.0 alongside it |
+| `@solana-program/token` | 0.18.0 | the `createMint`, `mintToATA`, and `transferToATA` instruction plans |
+| `@solana/kit` | 8.6.0 | what `@solana-program/token` is written for and web3.js 3 is built on; `createNoopSigner` and `flattenInstructionPlan` |
 
 ## Configuration
 
@@ -149,7 +160,7 @@ ts/web3js-v3/test/          offline tests
 scripts/                    validator, program build, and SDK vendoring
 ```
 
-Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other and `nonce-migration/anza`: `cluster` connects, funds keys, sends v1 transactions, and checks the program is deployed; `durable_nonce` (`durable-nonce` in TypeScript) is the durable nonce flow for comparison; `vector`, in Rust only, reads the nonce, which the TypeScript SDK does itself.
+Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other and `nonce-migration/anza`: `cluster` connects, funds keys, sends v1 transactions, and checks the program is deployed; `durable_nonce` (`durable-nonce` in TypeScript) is the durable nonce flow for comparison; `token` holds the token helpers the examples need, which in Rust includes the mint setup and in TypeScript the conversion of kit instructions; `vector`, in Rust only, reads the nonce, which the TypeScript SDK does itself.
 
 ## Additional resources
 

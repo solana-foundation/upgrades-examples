@@ -8,6 +8,7 @@
 
 pub mod cluster;
 pub mod durable_nonce;
+pub mod token;
 pub mod vector;
 
 /// Default JSON-RPC endpoint of a local `solana-test-validator`.

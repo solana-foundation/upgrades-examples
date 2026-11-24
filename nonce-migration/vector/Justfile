@@ -77,6 +77,13 @@ sign-relay:
 ts-sign-relay:
     cd ts/web3js-v3 && pnpm exec tsx src/sign-relay.ts
 
+# Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key.
+token-transfer:
+    cd rust && cargo run --bin token-transfer
+
+ts-token-transfer:
+    cd ts/web3js-v3 && pnpm exec tsx src/token-transfer.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -86,3 +93,5 @@ demo:
 _demo-inner:
     just sign-relay
     just ts-sign-relay
+    just token-transfer
+    just ts-token-transfer

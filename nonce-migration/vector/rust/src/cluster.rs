@@ -24,7 +24,8 @@ use crate::DEFAULT_RPC_URL;
 /// Unset v1 limits are zero, not the legacy defaults, so each transaction
 /// states them. They live in the message, not in an instruction, so the cold
 /// key's digest does not cover them and the relayer chooses. The relay of a
-/// SOL transfer costs about 17,000 compute units and loads the 580 KB program.
+/// SOL transfer costs about 17,000 compute units, a token transfer about
+/// 33,000, and both load the 580 KB program.
 const TRANSACTION_CONFIG: v1::TransactionConfig = v1::TransactionConfig::empty()
     .with_compute_unit_limit(200_000)
     .with_loaded_accounts_data_size_limit(4 * 1024 * 1024);

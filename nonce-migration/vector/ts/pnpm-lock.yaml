@@ -41,6 +41,12 @@ importers:
       '@noble/hashes':
         specifier: ^1.7.0
         version: 1.8.0
+      '@solana-program/token':
+        specifier: ^0.18.0
+        version: 0.18.0(@solana/kit@8.6.0(typescript@5.9.3))
+      '@solana/kit':
+        specifier: ^8.6.0
+        version: 8.6.0(typescript@5.9.3)
       '@solana/web3.js':
         specifier: ^3.2.1
         version: 3.2.1(typescript@5.9.3)
@@ -645,6 +651,11 @@ packages:
 
   '@solana-program/system@0.16.0':
     resolution: {integrity: sha512-/RG6q2E2vG/XpdOt8Jj/kbQktPlL5JyJuNGAeN9wDcxKDKQtrGTJpDrJgQUxiEy23fsPNXQbLN8XeCtYoMof3Q==}
+    peerDependencies:
+      '@solana/kit': ^8.5.0
+
+  '@solana-program/token@0.18.0':
+    resolution: {integrity: sha512-YNN13I4BxBnGPGk0NzP/LLQMCmJVdunbtgqjl7/Gfp1fDXQrKXh9df8xu+2ayNdvjGJYC4c9D5vZpVetHdyJaQ==}
     peerDependencies:
       '@solana/kit': ^8.5.0
 
@@ -1754,6 +1765,11 @@ snapshots:
 
   '@solana-program/system@0.16.0(@solana/kit@8.6.0(typescript@5.9.3))':
     dependencies:
+      '@solana/kit': 8.6.0(typescript@5.9.3)
+
+  '@solana-program/token@0.18.0(@solana/kit@8.6.0(typescript@5.9.3))':
+    dependencies:
+      '@solana-program/system': 0.16.0(@solana/kit@8.6.0(typescript@5.9.3))
       '@solana/kit': 8.6.0(typescript@5.9.3)
 
   '@solana/accounts@8.6.0(typescript@5.9.3)':
