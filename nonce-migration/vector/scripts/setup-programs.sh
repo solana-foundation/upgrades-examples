@@ -17,10 +17,11 @@ COMMIT="${VECTOR_COMMIT:?set VECTOR_COMMIT to the pinned vector commit}"
 # installs defaults to SBPF v3, so the build states the version.
 BUILD_ARGS=(--arch v0)
 
-# What the binary in $PROGRAMS was built from. A different pin or toolchain
+# What the binary in $PROGRAMS was built from: the pin, the build arguments,
+# and the cargo-build-sbf and platform-tools versions. A change in any of them
 # rebuilds it rather than reusing what is there.
 STAMP="$PROGRAMS/.source"
-SOURCE="$COMMIT ${BUILD_ARGS[*]}"
+SOURCE="$COMMIT ${BUILD_ARGS[*]} $(cargo build-sbf --version 2> /dev/null | paste -sd ' ')"
 
 mkdir -p "$PROGRAMS"
 if [[ -s "$PROGRAMS/vector.so" && "$(cat "$STAMP" 2> /dev/null)" == "$SOURCE" ]]; then
