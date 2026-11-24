@@ -76,6 +76,13 @@ stop() {
         pid="$(cat "$PID_FILE")"
         if ps -p "$pid" -o command= 2> /dev/null | grep -q solana-test-validator; then
             kill "$pid" 2> /dev/null || true
+            # Wait for it to exit, so a validator started right after this,
+            # by the other backend's demo for one, does not find this one
+            # still answering on the same port.
+            for _ in $(seq 1 30); do
+                ps -p "$pid" > /dev/null 2>&1 || break
+                sleep 1
+            done
         fi
         rm -f "$PID_FILE"
         return 0
