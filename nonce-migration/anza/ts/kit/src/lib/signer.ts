@@ -65,22 +65,37 @@ export function executionMessage(pda: Address, action: InstructionPlan, nonce: A
 }
 
 /**
- * Builds the authorization message `authority` signs: a v1 message holding
- * one `Execute` instruction, with no blockhash and no transaction config.
+ * Builds the authorization message that the `authorities` sign. It is a v1
+ * message holding one `Execute` instruction, with no blockhash and no
+ * transaction config. Every authority signs the same bytes.
  *
- * The authority is its only signer. Every account the instruction names is
- * demoted to a plain account first, the PDA included: the Signer program
- * grants signer privilege from the authority's signature and from PDA
- * promotion, not from the message header, and a required signer here would
- * need a signature nobody can supply. Mirrors `authorization_message` in the
- * Anza signer client crate, which has no JavaScript counterpart yet.
+ * Only the authorities are marked as signers in this message. The accounts of
+ * the `Execute` instruction are all marked as non-signers, including the
+ * PDAs, even though the PDAs do sign when the action runs. A PDA has no key,
+ * so if the message required its signature, nobody could provide one. The
+ * Signer program makes the PDAs signers itself, after it has checked the
+ * authorities' signatures.
+ *
+ * Hand-written, and should ideally be provided by the upstream client. The
+ * Rust client crate has this function, `authorization_message`; the
+ * JavaScript client does not yet.
+ *
+ * One step here works around a kit limitation. Kit only puts an account into
+ * a compiled message if it is the fee payer or appears in an instruction. The
+ * first authority is the fee payer, but any further authorities are neither,
+ * so they are inserted into the compiled message afterwards as readonly
+ * signers.
  */
 export function authorizationMessage(
     executionMessage: ReadonlyUint8Array,
     nonceAccount: Address,
     nonceAuthority: Address,
-    authority: Address,
+    authorities: readonly Address[],
 ): ReadonlyUint8Array {
+    const [first, ...rest] = authorities;
+    if (first === undefined) {
+        throw new Error('an authorization message needs at least one authority');
+    }
     const execute = getExecuteInstruction({
         message: executionMessage,
         nonceAccount,
@@ -95,9 +110,31 @@ export function authorizationMessage(
     };
     const message = pipe(
         createTransactionMessage({ version: 1 }),
-        m => setTransactionMessageFeePayer(authority, m),
+        m => setTransactionMessageFeePayer(first, m),
         m => setTransactionMessageLifetimeUsingBlockhash(lifetime('11111111111111111111111111111111'), m),
         m => appendTransactionMessageInstruction(demoted, m),
     );
-    return getCompiledTransactionMessageEncoder().encode(compileTransactionMessage(message));
+    const compiled = compileTransactionMessage(message);
+    // Insert the other authorities directly after the first, which is at
+    // index 0. Every account that came after index 0 moves up by the number
+    // inserted, so the instruction's account indexes are shifted to match.
+    const shifted = (index: number) => (index === 0 ? 0 : index + rest.length);
+    return getCompiledTransactionMessageEncoder().encode({
+        ...compiled,
+        header: {
+            ...compiled.header,
+            numReadonlySignerAccounts: compiled.header.numReadonlySignerAccounts + rest.length,
+            numSignerAccounts: compiled.header.numSignerAccounts + rest.length,
+        },
+        instructionHeaders: compiled.instructionHeaders.map(header => ({
+            ...header,
+            programAccountIndex: shifted(header.programAccountIndex),
+        })),
+        instructionPayloads: compiled.instructionPayloads.map(payload => ({
+            ...payload,
+            instructionAccountIndices: payload.instructionAccountIndices.map(shifted),
+        })),
+        numStaticAccounts: compiled.numStaticAccounts + rest.length,
+        staticAccounts: [first, ...rest, ...compiled.staticAccounts.slice(1)],
+    });
 }

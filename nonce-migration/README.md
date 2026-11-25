@@ -80,6 +80,7 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 |---|---|---|---|---|
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject a replay | `just sign-relay` | `just ts-sign-relay` | yes | yes |
 | Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` | yes | yes |
+| Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` | yes | next |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -91,7 +92,7 @@ These examples ship incrementally. The table above lists what exists; this list 
 |---|---|---|---|
 | `sign-relay` | the simplest cold-signed payment, before and after | shipped | shipped |
 | `token-transfer` | the same for a token balance, creating the recipient's account | shipped | shipped |
-| `multi-signer` | two cold approvers sign one action on different machines, in either order | next | planned |
+| `multi-signer` | two cold approvers sign one action on different machines, in either order | shipped | next |
 | `failed-attempt` | a failed action keeps its nonce and lands later; the deadline that closes that | planned | planned |
 | `cancel` | pre-sign an action, then kill it by consuming its nonce | planned | planned |
 | `migrate` | move SOL, token balances, stake and mint authorities to the PDA | planned, with the Anza CLI | planned, with ordinary transactions |

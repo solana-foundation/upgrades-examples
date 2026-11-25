@@ -68,7 +68,7 @@ const withdrawal = await getTransferToATAInstructionPlanAsync({
     recipient,
 });
 const execution = executionMessage(pda, withdrawal, nonce);
-const authorization = authorizationMessage(execution, nonceAccount, pda, authority.address);
+const authorization = authorizationMessage(execution, nonceAccount, pda, [authority.address]);
 const signature = await signBytes(authority.keyPair.privateKey, authorization);
 const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 console.log(

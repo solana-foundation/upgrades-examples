@@ -23,9 +23,10 @@ use crate::DEFAULT_RPC_URL;
 /// The budget every transaction the examples send requests.
 ///
 /// Unset v1 limits are zero, not the legacy defaults, so each transaction
-/// states them. The largest is the relay of a token transfer: the Signer and
-/// Executor programs, one promoted PDA, and the action cost about 98,000
-/// compute units, against about 54,000 for a SOL transfer.
+/// states them. The largest is the two-approver token withdrawal: the Signer
+/// and Executor programs, two signatures, two promoted PDAs, and the action
+/// cost about 132,000 compute units, against about 90,000 for a token transfer
+/// with one approver and about 54,000 for a SOL transfer.
 const TRANSACTION_CONFIG: v1::TransactionConfig = v1::TransactionConfig::empty()
     .with_compute_unit_limit(200_000)
     .with_loaded_accounts_data_size_limit(4 * 1024 * 1024);
