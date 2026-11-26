@@ -83,6 +83,7 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` | yes | yes |
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` | yes | yes |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` | yes | yes |
+| Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` | yes | yes |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -97,7 +98,7 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `multi-signer` | two cold approvers sign one action on different machines, in either order | shipped | shipped |
 | `failed-attempt` | a relay that lands and fails keeps its nonce, and the same signed action lands later | shipped | shipped |
 | `deadline` | an action signed with a deadline is rejected once that slot has passed | shipped | shipped |
-| `cancel` | pre-sign an action, then kill it by consuming its nonce | next | planned |
+| `cancel` | pre-sign an action, then kill it by consuming its nonce | shipped | shipped |
 | `migrate` | move SOL, token balances, stake and mint authorities to the PDA | planned, with the Anza CLI | planned, with ordinary transactions |
 | `retire-nonces` | inventory old System nonce accounts, prove a stale pre-signed transaction is dead, reclaim rent | planned | planned |
 | `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | planned | planned |
