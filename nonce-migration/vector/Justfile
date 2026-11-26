@@ -91,6 +91,13 @@ multi-signer:
 ts-multi-signer:
     cd ts/web3js-v3 && pnpm exec tsx src/multi-signer.ts
 
+# A failed action keeps its nonce and lands later; an action signed with a deadline is rejected after it.
+failed-attempt:
+    cd rust && cargo run --bin failed-attempt
+
+ts-failed-attempt:
+    cd ts/web3js-v3 && pnpm exec tsx src/failed-attempt.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -104,3 +111,5 @@ _demo-inner:
     just ts-token-transfer
     just multi-signer
     just ts-multi-signer
+    just failed-attempt
+    just ts-failed-attempt
