@@ -1,0 +1,50 @@
+[package]
+name = "vector-examples"
+edition = "2021"
+license = "MIT"
+publish = false
+version = "0.1.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+anyhow = "1"
+
+# Vector has no release: `vector-core` on crates.io is an unrelated project.
+# The SDK is pinned to one commit of the repo, the same one
+# scripts/setup-programs.sh builds the program from. It depends on the program
+# crate itself, so the program id, the account header, and the digest cannot
+# drift from what the validator runs.
+vector-core = { git = "https://github.com/blueshift-gg/vector", rev = "f806f6cae32030098dc06d97bcd0f0aabed29a7e" }
+
+# The key type the SDK's Ed25519 signer takes, at the version it pins.
+ed25519-dalek = "=2.1.1"
+
+# The token crates nonce-migration/anza uses, at the same versions.
+spl-associated-token-account-interface = "2.0.0"
+spl-token-interface = "3.0.0"
+
+# The versions nonce-migration/anza builds against, so the two backends share
+# one `Address`, one `Instruction`, and one `v1::Message`.
+solana-address = { version = "2.9.0", features = ["atomic", "copy", "decode"] }
+solana-commitment-config = "3.1.1"
+solana-hash = "4.7.0"
+solana-instruction = "4.0.0"
+solana-instruction-error = "3.1.0"
+solana-keypair = "4.0.1"
+solana-message = { version = "5.1.0", features = ["wincode"] }
+solana-nonce = "3.4.0"
+solana-program-pack = "3.1.0"
+solana-rpc-client = "4.4.1"
+solana-rpc-client-api = "4.4.1"
+solana-rpc-client-nonce-utils = "4.4.1"
+solana-signature = "3.6.0"
+solana-signer = "4.0.0"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+solana-transaction = { version = "5.1.0", features = ["wincode"] }
+solana-transaction-error = "4.1.0"
+solana-transaction-status-client-types = "4.4.1"
