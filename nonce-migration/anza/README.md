@@ -70,7 +70,7 @@ The five operations in the directory README are mostly calls into the official c
 
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Lighthouse's `AssertionFailed`, no funds move, and the nonce is unchanged.
 
-`cancel` is how to take back something already signed. The cold key signs a transfer and, in the same session, a cancellation over the same nonce: an authorization whose execution message has no instructions. The hot key relays the cancellation, which only advances the nonce. The transfer is then rejected with the Executor's `NonceMismatch`, and the recipient's balance stays at zero.
+`cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a cancellation over the same nonce: an authorization whose execution message has no instructions. The hot key relays the cancellation, which only advances the nonce. The transfer is then rejected with the Executor's `NonceMismatch`, and the recipient's balance stays at zero.
 
 ## The three layers
 
@@ -109,7 +109,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 **There is no built-in deadline; add one with an instruction.** An authorization stays valid until its nonce advances, and a relay that fails does not advance it. The upstream docs say to put an instruction that fails after the deadline into the execution message, and name [Lighthouse](https://github.com/Jac0xb/lighthouse)'s `AssertSysvarClock`. Lighthouse is a third-party program with an immutable mainnet deployment, so the local validator loads a copy: the dump the pinned repo keeps as a test fixture. The instruction comes from `lighthouse-sdk`, in both languages. The deadline is a slot, not a time.
 
-**A cancellation has to be signed by the cold key too.** The nonce account's authority is the PDA, so nothing online can advance the nonce on its own. Cancelling means relaying a second authorization over the same nonce, and that one needs the cold key's signature. Sign it in the same session as the action it guards, or the cold key has to come back online to cancel. The Anza CLI's `nonce advance` builds the same empty execution message, and adds a random account to it so the next nonce value cannot be worked out in advance; the example leaves that out.
+**A cancellation has to be signed by the cold key too.** The nonce account's authority is the PDA, so nothing online can advance the nonce on its own. Cancelling means relaying a second authorization over the same nonce, and that one needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. The Anza CLI's `nonce advance` builds the same empty execution message, and adds a random account to it so the next nonce value cannot be worked out in advance; the example leaves that out.
 
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 

@@ -74,7 +74,7 @@ The operations in the directory README are calls into the Vector SDK; the shared
 
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Vector's `Expired`, no funds move, and the nonce is unchanged.
 
-`cancel` is how to take back something already signed. The cold key signs a transfer and, in the same session, a revocation over the same nonce: an `Advance` with no other instruction. The hot key relays the revocation, which only advances the nonce. The transfer's signature then no longer verifies, so relaying it is rejected and the recipient's balance stays at zero.
+`cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a revocation over the same nonce: an `Advance` with no other instruction. The hot key relays the revocation, which only advances the nonce. The transfer's signature then no longer verifies, so relaying it is rejected and the recipient's balance stays at zero.
 
 ## The two instructions
 
@@ -121,7 +121,7 @@ The next nonce is known before anything is sent because it is the digest the col
 
 **One-call signing is for one signer.** `sign_advance_instruction_ed25519` builds, signs, and returns an `Advance` for a single key. For several approvers on separate machines, use `advance_message`, `signer_digest`, and `create_multi_advance_instruction`, as `multi-signer` does.
 
-**A revocation has to be signed by the cold key too, and sent alone.** Nothing online can advance the nonce on its own. Cancelling means relaying `sign_revocation_instruction_ed25519`'s `Advance`, which needs the cold key's signature, so sign it in the same session as the action it guards. It was signed as the only instruction of its transaction, so it has to be relayed that way.
+**A revocation has to be signed by the cold key too, and sent alone.** Nothing online can advance the nonce on its own. Cancelling means relaying `sign_revocation_instruction_ed25519`'s `Advance`, which needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. It was signed as the only instruction of its transaction, so it has to be relayed that way.
 
 **One vector account, one action in flight.** It holds one nonce, so a second signed action is valid only after the first lands. Vector's nonce accounts lift that; they are not used here yet.
 

@@ -24,10 +24,8 @@ import {
     generateKeyPairSigner,
     isSolanaError,
     lamports,
-    type ReadonlyUint8Array,
     sequentialInstructionPlan,
     signBytes,
-    type SignatureBytes,
     singleInstructionPlan,
     SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION,
     SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM,
@@ -62,7 +60,7 @@ console.log(`  nonce:         ${nonce}`);
 // nonce value. Only one of them can ever land: whichever lands first advances
 // the nonce, and the other then names a value that is gone.
 console.log('\n== signing on the cold side ==');
-// The action: an ordinary transfer out of the PDA.
+// The action is an ordinary transfer out of the PDA.
 const transfer = getTransferSolInstruction({ amount: AMOUNT, destination: recipient, source: createNoopSigner(pda) });
 const action = authorizationMessage(executionMessage(pda, singleInstructionPlan(transfer), nonce), nonceAccount, pda, [
     authority.address,
@@ -95,34 +93,32 @@ if (advanced !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
-// The action is still a valid signed transaction. But it names the old nonce
-// value, and the nonce account now holds a different one, so the Executor
-// rejects it.
+// Now relay the action. It is still a valid signed transaction. But it names
+// the old nonce value, and the nonce account now holds a different one, so the
+// Executor rejects it. The RPC node sees this when it simulates the
+// transaction, and does not send it.
 console.log('\n== relayed the action afterwards ==');
-await expectRejected(action, actionSignature, MESSAGE_EXECUTOR_ERROR__NONCE_MISMATCH, "the Executor's NonceMismatch");
+try {
+    await relayer.ed25519Signer.instructions
+        .submit({ message: action, signatures: [actionSignature] })
+        .sendTransaction();
+    throw new Error('expected the relay to be rejected, but it landed');
+} catch (error) {
+    // The client simulates before sending, so the rejection arrives wrapped
+    // in a simulation error.
+    const cause = isSolanaError(error, SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION)
+        ? unwrapSimulationError(error.cause)
+        : error;
+    if (
+        !isSolanaError(cause, SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM) ||
+        cause.context.code !== MESSAGE_EXECUTOR_ERROR__NONCE_MISMATCH
+    ) {
+        throw new Error("expected the Executor's NonceMismatch", { cause: error });
+    }
+    console.log(`  rejected: ${cause.message} (the Executor's NonceMismatch)`);
+}
 const { value: balance } = await relayer.rpc.getBalance(recipient, { commitment: 'confirmed' }).send();
 console.log(`  recipient balance: ${balance} lamports`);
 if (balance !== 0n) {
     throw new Error('the cancelled action moved funds');
-}
-
-/**
- * Relays `message` with `cold`, the cold key's signature, and throws unless
- * it is rejected with the custom program error `code`. The client simulates
- * before sending, so the rejection arrives wrapped in a simulation error.
- */
-async function expectRejected(message: ReadonlyUint8Array, cold: SignatureBytes, code: number, name: string) {
-    try {
-        await relayer.ed25519Signer.instructions.submit({ message, signatures: [cold] }).sendTransaction();
-    } catch (error) {
-        const cause = isSolanaError(error, SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION)
-            ? unwrapSimulationError(error.cause)
-            : error;
-        if (!isSolanaError(cause, SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM) || cause.context.code !== code) {
-            throw new Error(`expected ${name}`, { cause: error });
-        }
-        console.log(`  rejected: ${cause.message} (${name})`);
-        return;
-    }
-    throw new Error(`expected ${name}, but the relay landed`);
 }

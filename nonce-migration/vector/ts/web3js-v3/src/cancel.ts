@@ -14,7 +14,7 @@
  * Run with `just ts-cancel`.
  */
 
-import { Keypair, PublicKey, SendTransactionError, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
+import { Keypair, PublicKey, SendTransactionError, SystemProgram } from '@solana/web3.js';
 
 import {
     createInitializeEd25519,
@@ -68,7 +68,7 @@ console.log(`  nonce:          ${base58(nonce)}`);
 // value. Only one of them can ever land: whichever lands first advances the
 // nonce, and the other's signature then no longer verifies.
 console.log('\n== signing on the cold side ==');
-// The action: an ordinary transfer out of the system PDA.
+// The action is an ordinary transfer out of the system PDA.
 const transfer = SystemProgram.transfer({ fromPubkey: systemPda, lamports: AMOUNT, toPubkey: recipient });
 const passthrough = createSystemPassthroughInstruction(ED25519, identity, [transfer]);
 const advance = signAdvanceInstructionEd25519(signingKey, nonce, [], [passthrough]);
@@ -96,36 +96,30 @@ if (advanced !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
-// The action is still a valid signed transaction. But its signature was made
-// over the old nonce value, and the account now holds a different one, so the
-// signature no longer verifies and the program rejects it.
+// Now relay the action. It is still a valid signed transaction. But its
+// signature was made over the old nonce value, and the account now holds a
+// different one. So the signature no longer verifies and the program rejects
+// it. The RPC node sees this when it simulates the transaction, and does not
+// send it.
 console.log('\n== relayed the action afterwards ==');
-await expectRejected([advance, passthrough]);
+try {
+    await sendTransaction(connection, relayer, [advance, passthrough], [relayer]);
+    throw new Error('expected the relay to be rejected, but it landed');
+} catch (error) {
+    // Vector reports a signature that does not verify as
+    // `MissingRequiredSignature`. web3.js reports a rejected send as text
+    // only, so this matches on the message. A structured error should ideally
+    // be provided upstream.
+    if (
+        !(error instanceof SendTransactionError) ||
+        !error.transactionError.message.includes('missing required signature')
+    ) {
+        throw new Error('expected MissingRequiredSignature', { cause: error });
+    }
+    console.log(`  rejected: ${error.transactionError.message}`);
+}
 const balance = await connection.getBalance(recipient);
 console.log(`  recipient balance: ${balance} lamports`);
 if (BigInt(balance) !== 0n) {
     throw new Error('the cancelled action moved funds');
-}
-
-/**
- * Relays `instructions` and throws unless the relay is rejected with
- * `MissingRequiredSignature`, which is how Vector reports a signature that
- * does not verify. web3.js reports a rejected send as text only, so this
- * matches on the message; a structured error should ideally be provided
- * upstream.
- */
-async function expectRejected(instructions: TransactionInstruction[]) {
-    try {
-        await sendTransaction(connection, relayer, instructions, [relayer]);
-    } catch (error) {
-        if (
-            !(error instanceof SendTransactionError) ||
-            !error.transactionError.message.includes('missing required signature')
-        ) {
-            throw new Error('expected MissingRequiredSignature', { cause: error });
-        }
-        console.log(`  rejected: ${error.transactionError.message}`);
-        return;
-    }
-    throw new Error('expected a rejection, but the relay landed');
 }

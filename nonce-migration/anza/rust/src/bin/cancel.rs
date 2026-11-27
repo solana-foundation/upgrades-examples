@@ -19,7 +19,6 @@ use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
 use solana_rpc_client_api::client_error::Error as ClientError;
-use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_system_interface::instruction as system_instruction;
 use solana_transaction_error::TransactionError;
@@ -62,7 +61,7 @@ fn main() -> Result<()> {
     // nonce value. Only one of them can ever land: whichever lands first
     // advances the nonce, and the other then names a value that is gone.
     println!("\n== signing on the cold side ==");
-    // The action: an ordinary transfer out of the PDA.
+    // The action is an ordinary transfer out of the PDA.
     let transfer = system_instruction::transfer(&pda, &recipient, AMOUNT);
     let action = execution_message(&pda, &[transfer], nonce)?;
     let submit_action = [sign_and_submit(
@@ -96,39 +95,29 @@ fn main() -> Result<()> {
         bail!("the nonce did not advance to the value computed at signing time");
     }
 
-    // The action is still a valid signed transaction. But it names the old
-    // nonce value, and the nonce account now holds a different one, so the
-    // Executor rejects it.
+    // Now relay the action. It is still a valid signed transaction. But it
+    // names the old nonce value, and the nonce account now holds a different
+    // one, so the Executor rejects it. The RPC node sees this when it
+    // simulates the transaction, and does not send it.
     println!("\n== relayed the action afterwards ==");
-    expect_rejected(
-        send_transaction(&client, &relayer, &submit_action, &[&relayer]),
-        ExecutorError::NonceMismatch as u32,
-        "the Executor's NonceMismatch",
-    )?;
+    let Err(error) = send_transaction(&client, &relayer, &submit_action, &[&relayer]) else {
+        bail!("expected the relay to be rejected, but it landed");
+    };
+    let rejection = error
+        .downcast_ref::<ClientError>()
+        .and_then(ClientError::get_transaction_error);
+    match rejection {
+        Some(TransactionError::InstructionError(_, InstructionError::Custom(code)))
+            if code == ExecutorError::NonceMismatch as u32 =>
+        {
+            println!("  rejected: custom program error {code} (the Executor's NonceMismatch)");
+        }
+        _ => return Err(error.context("expected the Executor's NonceMismatch")),
+    }
     let balance = client.get_balance(&recipient)?;
     println!("  recipient balance: {balance} lamports");
     if balance != 0 {
         bail!("the cancelled action moved funds");
     }
     Ok(())
-}
-
-/// Fails unless a relay was rejected with the custom program error `code`.
-fn expect_rejected(relay: Result<Signature>, code: u32, name: &str) -> Result<()> {
-    let error = match relay {
-        Ok(signature) => bail!("expected {name}, but the relay landed as {signature}"),
-        Err(error) => error,
-    };
-    let rejection = error
-        .downcast_ref::<ClientError>()
-        .and_then(ClientError::get_transaction_error);
-    match rejection {
-        Some(TransactionError::InstructionError(_, InstructionError::Custom(found)))
-            if found == code =>
-        {
-            println!("  rejected: custom program error {found} ({name})");
-            Ok(())
-        }
-        _ => Err(error.context(format!("expected {name}"))),
-    }
 }
