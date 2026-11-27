@@ -22,14 +22,17 @@
 use anyhow::{bail, Context, Result};
 use ed25519_dalek::SigningKey;
 use solana_hash::Hash;
+use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
 use solana_message::{v1, VersionedMessage};
 use solana_program_pack::Pack;
+use solana_rpc_client_api::client_error::Error as ClientError;
 use solana_signer::Signer;
 use solana_stake_interface::instruction::{self as stake_instruction, LockupArgs};
 use solana_stake_interface::state::{Authorized, Lockup, StakeAuthorize, StakeStateV2};
 use solana_system_interface::instruction as system_instruction;
 use solana_transaction::versioned::VersionedTransaction;
+use solana_transaction_error::TransactionError;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use spl_token_interface::instruction::{
@@ -220,7 +223,40 @@ fn main() -> Result<()> {
         ),
     ];
 
-    // The cold key signs twice, both offline.
+    // First, try the handover without the new owner. The cold key sends the
+    // same instructions on its own, in an ordinary transaction. The system PDA does
+    // not sign that transaction, so it is marked as a non-signer here.
+    //
+    // The stake program's "checked" instructions need the new authority to
+    // sign, so the transaction fails. A transaction runs all of its
+    // instructions or none, so nothing moves. The RPC node sees the failure
+    // when it simulates the transaction, and does not send it.
+    println!("\n== trying the handover without the new owner ==");
+    let mut without_new_owner = handover.to_vec();
+    for instruction in &mut without_new_owner {
+        for account in &mut instruction.accounts {
+            if account.pubkey == pda {
+                account.is_signer = false;
+            }
+        }
+    }
+    let Err(error) = send_transaction(&client, &cold, &without_new_owner, &[&cold]) else {
+        bail!("expected the handover to be rejected, but it landed");
+    };
+    let rejection = error
+        .downcast_ref::<ClientError>()
+        .and_then(ClientError::get_transaction_error);
+    match rejection {
+        Some(TransactionError::InstructionError(_, InstructionError::MissingRequiredSignature)) => {
+            println!("  rejected: missing required signature (the new authority did not sign)");
+        }
+        _ => return Err(error.context("expected MissingRequiredSignature")),
+    }
+    if fetch_balance(&client, &cold_tokens)? != COLD_TOKENS {
+        bail!("the rejected handover moved tokens");
+    }
+
+    // Now the real migration. The cold key signs twice, both offline.
     //
     // First, as the new owner. It signs a digest of the transaction's
     // instructions. That is what lets the system PDA sign the instructions
@@ -302,6 +338,9 @@ fn main() -> Result<()> {
     if stake_meta.authorized.staker != pda
         || stake_meta.authorized.withdrawer != pda
         || stake_meta.lockup.custodian != pda
+        // The lockup itself is unchanged. Only its custodian moved.
+        || stake_meta.lockup.unix_timestamp != LOCKED_UNTIL
+        || stake_meta.lockup.epoch != 0
     {
         bail!("expected the PDA to be the staker, withdrawer, and custodian");
     }

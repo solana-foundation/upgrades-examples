@@ -48,8 +48,10 @@ import {
     assertIsTransactionWithDurableNonceLifetime,
     createNoopSigner,
     createTransactionMessage,
+    downgradeRoleToNonSigner,
     generateKeyPairSigner,
     getSignatureFromTransaction,
+    isSolanaError,
     lamports,
     type Nonce,
     pipe,
@@ -60,6 +62,9 @@ import {
     setTransactionMessageLifetimeUsingDurableNonce,
     signBytes,
     signTransactionMessageWithSigners,
+    SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION,
+    SOLANA_ERROR__INSTRUCTION_ERROR__MISSING_REQUIRED_SIGNATURE,
+    unwrapSimulationError,
     unwrapOption,
     upgradeRoleToSigner,
 } from '@solana/kit';
@@ -220,7 +225,38 @@ const handover = [
     }),
 ];
 
-// The cold key signs twice, both offline.
+// First, try the handover without the new owner. The cold key sends the same
+// instructions on its own, in an ordinary transaction. The PDA does not sign
+// that transaction, so it is marked as a non-signer here.
+//
+// The stake program's "checked" instructions need the new authority to sign,
+// so the transaction fails. A transaction runs all of its instructions or
+// none, so nothing moves. The client sees the failure when it simulates the
+// transaction, and does not send it.
+console.log('\n== trying the handover without the new owner ==');
+const withoutNewOwner = handover.map(instruction => ({
+    ...instruction,
+    accounts: instruction.accounts.map(account =>
+        account.address === pda ? { address: account.address, role: downgradeRoleToNonSigner(account.role) } : account,
+    ),
+}));
+try {
+    await coldClient.sendTransaction(withoutNewOwner);
+    throw new Error('expected the handover to be rejected, but it landed');
+} catch (error) {
+    const cause = isSolanaError(error, SOLANA_ERROR__FAILED_TO_SEND_TRANSACTION)
+        ? unwrapSimulationError(error.cause)
+        : error;
+    if (!isSolanaError(cause, SOLANA_ERROR__INSTRUCTION_ERROR__MISSING_REQUIRED_SIGNATURE)) {
+        throw new Error('expected a missing required signature', { cause: error });
+    }
+    console.log(`  rejected: ${cause.message} (the new authority did not sign)`);
+}
+if ((await fetchTokens(coldTokens)) !== COLD_TOKENS) {
+    throw new Error('the rejected handover moved tokens');
+}
+
+// Now the real migration. The cold key signs twice, both offline.
 //
 // First, as the new owner. It signs an authorization for the execution
 // message, which is what lets the PDA sign the instructions that need the new
@@ -302,6 +338,10 @@ const [{ authorized, lockup }] = stakeState.fields;
 console.log('  stake account: staker, withdrawer, and lockup custodian are the PDA');
 if (authorized.staker !== pda || authorized.withdrawer !== pda || lockup.custodian !== pda) {
     throw new Error('expected the PDA to be the staker, withdrawer, and custodian');
+}
+// The lockup itself is unchanged. Only its custodian moved.
+if (lockup.unixTimestamp !== LOCKED_UNTIL || lockup.epoch !== 0n) {
+    throw new Error('expected the lockup to be unchanged');
 }
 
 // From here on the cold key signs authorizations, never transactions. This
