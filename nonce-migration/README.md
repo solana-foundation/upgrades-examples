@@ -44,7 +44,7 @@ Moving a cold-key workflow onto the replacement is five operations. Each backend
 
 On Vector, steps 1 and 3 differ. The cold key has two addresses: a vector account, which has to be created and which holds the nonce, and a System-owned PDA derived from it, which holds the funds. Creating the vector account replaces creating a nonce account; one is enough until several actions have to be in flight at once. In step 4 there is nothing to wrap: the cold key signs a digest of the instructions the relayer will send.
 
-Afterwards, old System nonce accounts can be closed with `WithdrawNonceAccount` to reclaim their rent.
+Afterwards, old System nonce accounts can be closed to reclaim their rent, with the System program's `WithdrawNonceAccount` instruction or `solana withdraw-from-nonce-account`.
 
 ## Before you move funds
 
@@ -84,6 +84,8 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` | yes | yes |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` | yes | yes |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` | yes | yes |
+| Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` | yes | yes |
+| Sign three actions at once, each over its own nonce account, and relay them out of order | `just parallel` | `just ts-parallel` | yes | yes |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -99,10 +101,9 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `failed-attempt` | a relay that lands and fails keeps its nonce, and the same signed action lands later | [Rust](anza/rust/src/bin/failed-attempt.rs), [TypeScript](anza/ts/kit/src/failed-attempt.ts) | [Rust](vector/rust/src/bin/failed-attempt.rs), [TypeScript](vector/ts/web3js-v3/src/failed-attempt.ts) |
 | `deadline` | an action signed with a deadline is rejected once that slot has passed | [Rust](anza/rust/src/bin/deadline.rs), [TypeScript](anza/ts/kit/src/deadline.ts) | [Rust](vector/rust/src/bin/deadline.rs), [TypeScript](vector/ts/web3js-v3/src/deadline.ts) |
 | `cancel` | sign an action, then cancel it by using up its nonce first | [Rust](anza/rust/src/bin/cancel.rs), [TypeScript](anza/ts/kit/src/cancel.ts) | [Rust](vector/rust/src/bin/cancel.rs), [TypeScript](vector/ts/web3js-v3/src/cancel.ts) |
-| `migrate` | move SOL, token balances, stake and mint authorities to the PDA | next | planned |
-| `retire-nonces` | inventory old System nonce accounts, prove a stale pre-signed transaction is dead, reclaim rent | planned | planned |
-| `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | planned | planned |
-| `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | planned, with the Anza CLI | planned |
+| `migrate` | move SOL, token balances, mint and freeze authority, and a locked stake account to the PDA in one checked transaction, then use them | [Rust](anza/rust/src/bin/migrate.rs), [TypeScript](anza/ts/kit/src/migrate.ts) | [Rust](vector/rust/src/bin/migrate.rs), [TypeScript](vector/ts/web3js-v3/src/migrate.ts) |
+| `parallel` | several actions signed at once under one cold key, each on its own nonce account, landing in any order | [Rust](anza/rust/src/bin/parallel.rs), [TypeScript](anza/ts/kit/src/parallel.ts) | [Rust](vector/rust/src/bin/parallel.rs), [TypeScript](vector/ts/web3js-v3/src/parallel.ts) |
+| `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | next | planned |
 
 Python and Go have no client on either side and are recorded as a gap, the way `transaction-v1/` records that Python has no gRPC example.
 

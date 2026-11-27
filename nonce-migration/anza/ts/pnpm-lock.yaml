@@ -38,6 +38,9 @@ importers:
       '@solana-program/ed25519-programmatic-signer':
         specifier: ^1.0.0
         version: 1.0.0(@solana/kit@8.6.0(typescript@5.9.3))
+      '@solana-program/stake':
+        specifier: ^0.11.0
+        version: 0.11.0(@solana/kit@8.6.0(typescript@5.9.3))
       '@solana-program/system':
         specifier: ^0.16.0
         version: 0.16.0(@solana/kit@8.6.0(typescript@5.9.3))
@@ -612,6 +615,11 @@ packages:
 
   '@solana-program/loader-v3@0.8.0':
     resolution: {integrity: sha512-WMtdoW24mAnBIOynbSwGCEFzIMe14sBOBnVxMALT9gjSLLTPHGkXd8ZcWqFSwx1IMTyGn7hUsZAM02atqvU9WQ==}
+    peerDependencies:
+      '@solana/kit': ^8.5.0
+
+  '@solana-program/stake@0.11.0':
+    resolution: {integrity: sha512-AgCrDjPuZArrGN1W7G8J3b+gIq166teMaa/0aW1wsSVb8KVx87qV3Wg3SMNGN2cQ0gEe50LTvsS+4KxPIgzNsg==}
     peerDependencies:
       '@solana/kit': ^8.5.0
 
@@ -1694,6 +1702,10 @@ snapshots:
       '@solana/kit': 8.6.0(typescript@5.9.3)
 
   '@solana-program/loader-v3@0.8.0(@solana/kit@8.6.0(typescript@5.9.3))':
+    dependencies:
+      '@solana/kit': 8.6.0(typescript@5.9.3)
+
+  '@solana-program/stake@0.11.0(@solana/kit@8.6.0(typescript@5.9.3))':
     dependencies:
       '@solana/kit': 8.6.0(typescript@5.9.3)
 

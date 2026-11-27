@@ -25,7 +25,8 @@ use crate::cluster::send_transaction;
 /// Decimals of the mint the examples create: USDC's.
 pub const DECIMALS: u8 = 6;
 
-/// Creates a Token program mint with `payer` as its mint authority.
+/// Creates a Token program mint with `payer` as its mint authority and its
+/// freeze authority.
 pub fn create_mint(client: &RpcClient, payer: &Keypair) -> Result<Address> {
     let mint = Keypair::new();
     let rent = client.get_minimum_balance_for_rent_exemption(Mint::LEN)?;
@@ -41,7 +42,7 @@ pub fn create_mint(client: &RpcClient, payer: &Keypair) -> Result<Address> {
             &TOKEN_PROGRAM,
             &mint.pubkey(),
             &payer.pubkey(),
-            None,
+            Some(&payer.pubkey()),
             DECIMALS,
         )?,
     ];
