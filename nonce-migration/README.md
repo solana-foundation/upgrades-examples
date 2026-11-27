@@ -44,7 +44,7 @@ Moving a cold-key workflow onto the replacement is five operations. Each backend
 
 On Vector, steps 1 and 3 differ. The cold key has two addresses: a vector account, which has to be created and which holds the nonce, and a System-owned PDA derived from it, which holds the funds. Creating the vector account replaces creating a nonce account; one is enough until several actions have to be in flight at once. In step 4 there is nothing to wrap: the cold key signs a digest of the instructions the relayer will send.
 
-Afterwards, old System nonce accounts can be closed with `WithdrawNonceAccount` to reclaim their rent.
+Afterwards, old System nonce accounts can be closed to reclaim their rent, with the System program's `WithdrawNonceAccount` instruction or `solana withdraw-from-nonce-account`.
 
 ## Before you move funds
 
@@ -101,8 +101,7 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `deadline` | an action signed with a deadline is rejected once that slot has passed | [Rust](anza/rust/src/bin/deadline.rs), [TypeScript](anza/ts/kit/src/deadline.ts) | [Rust](vector/rust/src/bin/deadline.rs), [TypeScript](vector/ts/web3js-v3/src/deadline.ts) |
 | `cancel` | sign an action, then cancel it by using up its nonce first | [Rust](anza/rust/src/bin/cancel.rs), [TypeScript](anza/ts/kit/src/cancel.ts) | [Rust](vector/rust/src/bin/cancel.rs), [TypeScript](vector/ts/web3js-v3/src/cancel.ts) |
 | `migrate` | move SOL, token balances, mint and freeze authority, and a locked stake account to the PDA in one checked transaction, then use them | [Rust](anza/rust/src/bin/migrate.rs), [TypeScript](anza/ts/kit/src/migrate.ts) | [Rust](vector/rust/src/bin/migrate.rs), [TypeScript](vector/ts/web3js-v3/src/migrate.ts) |
-| `retire-nonces` | inventory old System nonce accounts, prove a stale pre-signed transaction is dead, reclaim rent | next | planned |
-| `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | planned | planned |
+| `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | next | planned |
 | `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | planned, with the Anza CLI | planned |
 
 Python and Go have no client on either side and are recorded as a gap, the way `transaction-v1/` records that Python has no gRPC example.
