@@ -43,6 +43,7 @@ Vector has no release: no tags, nothing on crates.io or npm, and the program is 
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` |
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
+| Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/web3js-v3/src/`](ts/web3js-v3/src).
 
@@ -60,6 +61,7 @@ The operations in the directory README are calls into the Vector SDK; the shared
 | Relay on the hot side | send the two instructions | send the two instructions |
 | Sign with several approvers | `advance_message` once, `signer_digest` per approver, each signs `signed(&digest)`, then `create_multi_advance_instruction` and `create_multi_passthrough_instruction` | `advanceMessage` once, `signerDigest` and `signDigestEd25519` per approver, then `createMultiAdvanceInstruction` and `createMultiPassthroughInstruction` |
 | Sign with a deadline | `advance_message` with the last valid slot, `signer_digest`, `create_multi_advance_instruction` | `signAdvanceInstructionEd25519` with a trailing `validUntil` |
+| Cancel a signed action | `sign_revocation_instruction_ed25519`; `revocation_digest` is the nonce it leaves | `signRevocationInstructionEd25519`; `revocationDigest` is the nonce it leaves |
 | Build the token instructions | `spl-token-interface`, `spl-associated-token-account-interface` | `@solana-program/token`, converted by `toTransactionInstructions` in `token.ts` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through Vector, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that what the cold key signed outlives one. Set `VECTOR_SKIP_EXPIRY=true` to skip the wait. Before the relay it sends the same signature with the amount doubled, and afterwards it sends the relay a second time; both must be rejected.
@@ -71,6 +73,8 @@ The operations in the directory README are calls into the Vector SDK; the shared
 `failed-attempt` shows what a failed relay leaves behind. The cold key signs a transfer the system PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same two instructions then land once the PDA is funded, with nothing signed again. A durable nonce transaction that landed and failed would have used up its nonce.
 
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Vector's `Expired`, no funds move, and the nonce is unchanged.
+
+`cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a revocation over the same nonce: an `Advance` with no other instruction. The hot key relays the revocation, which only advances the nonce. The transfer's signature then no longer verifies, so relaying it is rejected and the recipient's balance stays at zero.
 
 ## The two instructions
 
@@ -117,6 +121,8 @@ The next nonce is known before anything is sent because it is the digest the col
 
 **One-call signing is for one signer.** `sign_advance_instruction_ed25519` builds, signs, and returns an `Advance` for a single key. For several approvers on separate machines, use `advance_message`, `signer_digest`, and `create_multi_advance_instruction`, as `multi-signer` does.
 
+**A revocation has to be signed by the cold key too, and sent alone.** Nothing online can advance the nonce on its own. Cancelling means relaying `sign_revocation_instruction_ed25519`'s `Advance`, which needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. It was signed as the only instruction of its transaction, so it has to be relayed that way.
+
 **One vector account, one action in flight.** It holds one nonce, so a second signed action is valid only after the first lands. Vector's nonce accounts lift that; they are not used here yet.
 
 **The system PDA pays rent, so keep it in SOL.** It is a System-owned address with lamports, so a `Passthrough` can carry `CreateAssociatedTokenAccountIdempotent` with the system PDA as payer, which is how `token-transfer` creates the recipient's account. A system PDA that holds only tokens cannot do that. The token accounts belong to the system PDA, not to the vector account.
@@ -162,7 +168,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, and `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged. CI runs `just check` and `just demo`.
+The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, and `cancel` requires the cancelled action to be rejected with the funds unmoved. CI runs `just check` and `just demo`.
 
 ## Layout
 

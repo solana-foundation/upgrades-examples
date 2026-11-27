@@ -41,6 +41,7 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` |
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
+| Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -57,6 +58,7 @@ The five operations in the directory README are mostly calls into the official c
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 | Sign with several approvers | `authorization_message` with every authority, each signs its bytes, then `submit` with one signature per signer | `authorizationMessage` with every authority, each `signBytes`, then `submit` with one signature per signer |
 | Add a deadline | `lighthouse-sdk`'s `AssertSysvarClockBuilder` as the first instruction of the action | `lighthouse-sdk`'s `getAssertSysvarClockInstruction` as the first instruction of the action |
+| Cancel a signed action | `execution_message` with no instructions over the same nonce, signed and relayed like any action | `executionMessage` with an empty plan over the same nonce, signed and relayed like any action |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
@@ -67,6 +69,8 @@ The five operations in the directory README are mostly calls into the official c
 `failed-attempt` shows what a failed relay leaves behind. The cold key signs a transfer the PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same signed bytes then land once the PDA is funded, with nothing signed again. A durable nonce transaction that landed and failed would have used up its nonce.
 
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Lighthouse's `AssertionFailed`, no funds move, and the nonce is unchanged.
+
+`cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a cancellation over the same nonce: an authorization whose execution message has no instructions. The hot key relays the cancellation, which only advances the nonce. The transfer is then rejected with the Executor's `NonceMismatch`, and the recipient's balance stays at zero.
 
 ## The three layers
 
@@ -104,6 +108,8 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 **`Submit` takes signatures by position.** One slot per required signer of the authorization message, in the message's order, not the order the approvers signed in or were listed in. `multi-signer` reads the order back from the message. An empty slot is allowed only for a key that signs the relay transaction itself; otherwise the Signer returns `MissingSignature`.
 
 **There is no built-in deadline; add one with an instruction.** An authorization stays valid until its nonce advances, and a relay that fails does not advance it. The upstream docs say to put an instruction that fails after the deadline into the execution message, and name [Lighthouse](https://github.com/Jac0xb/lighthouse)'s `AssertSysvarClock`. Lighthouse is a third-party program with an immutable mainnet deployment, so the local validator loads a copy: the dump the pinned repo keeps as a test fixture. The instruction comes from `lighthouse-sdk`, in both languages. The deadline is a slot, not a time.
+
+**A cancellation has to be signed by the cold key too.** The nonce account's authority is the PDA, so nothing online can advance the nonce on its own. Cancelling means relaying a second authorization over the same nonce, and that one needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. The Anza CLI's `nonce advance` builds the same empty execution message, and adds a random account to it so the next nonce value cannot be worked out in advance; the example leaves that out.
 
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 
@@ -153,7 +159,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, and `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, and `cancel` requires the cancelled action to be rejected with the funds unmoved. CI runs `just check` and `just demo`.
 
 ## Layout
 

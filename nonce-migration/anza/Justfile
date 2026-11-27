@@ -102,6 +102,13 @@ deadline:
 ts-deadline:
     cd ts/kit && pnpm exec tsx src/deadline.ts
 
+# Cancel a signed action by landing an empty authorization over the same nonce; the action is then rejected.
+cancel:
+    cd rust && cargo run --bin cancel
+
+ts-cancel:
+    cd ts/kit && pnpm exec tsx src/cancel.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -119,3 +126,5 @@ _demo-inner:
     just ts-failed-attempt
     just deadline
     just ts-deadline
+    just cancel
+    just ts-cancel

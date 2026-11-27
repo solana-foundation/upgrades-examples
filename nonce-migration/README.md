@@ -83,6 +83,7 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` | yes | yes |
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` | yes | yes |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` | yes | yes |
+| Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` | yes | yes |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -92,13 +93,13 @@ These examples ship incrementally. The table above lists what exists; this list 
 
 | Example | What it shows | Anza | Vector |
 |---|---|---|---|
-| `sign-relay` | the simplest cold-signed payment, before and after | shipped | shipped |
-| `token-transfer` | the same for a token balance, creating the recipient's account | shipped | shipped |
-| `multi-signer` | two cold approvers sign one action on different machines, in either order | shipped | shipped |
-| `failed-attempt` | a relay that lands and fails keeps its nonce, and the same signed action lands later | shipped | shipped |
-| `deadline` | an action signed with a deadline is rejected once that slot has passed | shipped | shipped |
-| `cancel` | pre-sign an action, then kill it by consuming its nonce | next | planned |
-| `migrate` | move SOL, token balances, stake and mint authorities to the PDA | planned, with the Anza CLI | planned, with ordinary transactions |
+| `sign-relay` | the simplest cold-signed payment, before and after | [Rust](anza/rust/src/bin/sign-relay.rs), [TypeScript](anza/ts/kit/src/sign-relay.ts) | [Rust](vector/rust/src/bin/sign-relay.rs), [TypeScript](vector/ts/web3js-v3/src/sign-relay.ts) |
+| `token-transfer` | the same for a token balance, creating the recipient's account | [Rust](anza/rust/src/bin/token-transfer.rs), [TypeScript](anza/ts/kit/src/token-transfer.ts) | [Rust](vector/rust/src/bin/token-transfer.rs), [TypeScript](vector/ts/web3js-v3/src/token-transfer.ts) |
+| `multi-signer` | two cold approvers sign one action on different machines, in either order | [Rust](anza/rust/src/bin/multi-signer.rs), [TypeScript](anza/ts/kit/src/multi-signer.ts) | [Rust](vector/rust/src/bin/multi-signer.rs), [TypeScript](vector/ts/web3js-v3/src/multi-signer.ts) |
+| `failed-attempt` | a relay that lands and fails keeps its nonce, and the same signed action lands later | [Rust](anza/rust/src/bin/failed-attempt.rs), [TypeScript](anza/ts/kit/src/failed-attempt.ts) | [Rust](vector/rust/src/bin/failed-attempt.rs), [TypeScript](vector/ts/web3js-v3/src/failed-attempt.ts) |
+| `deadline` | an action signed with a deadline is rejected once that slot has passed | [Rust](anza/rust/src/bin/deadline.rs), [TypeScript](anza/ts/kit/src/deadline.ts) | [Rust](vector/rust/src/bin/deadline.rs), [TypeScript](vector/ts/web3js-v3/src/deadline.ts) |
+| `cancel` | sign an action, then cancel it by using up its nonce first | [Rust](anza/rust/src/bin/cancel.rs), [TypeScript](anza/ts/kit/src/cancel.ts) | [Rust](vector/rust/src/bin/cancel.rs), [TypeScript](vector/ts/web3js-v3/src/cancel.ts) |
+| `migrate` | move SOL, token balances, stake and mint authorities to the PDA | next | planned |
 | `retire-nonces` | inventory old System nonce accounts, prove a stale pre-signed transaction is dead, reclaim rent | planned | planned |
 | `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | planned | planned |
 | `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | planned, with the Anza CLI | planned |
