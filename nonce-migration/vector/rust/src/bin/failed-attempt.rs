@@ -94,9 +94,13 @@ fn main() -> Result<()> {
     println!("  action:     transfer {AMOUNT} lamports from the system PDA");
     println!("  next nonce: {next_nonce_value}");
 
-    // Relay it anyway. The RPC node is told not to simulate first, so the
-    // transaction really lands. The transfer fails inside the System program,
-    // and the whole transaction is rolled back with it.
+    // The system PDA holds no funds, so this transfer cannot succeed yet.
+    // Relay it anyway, to see what a failed attempt leaves behind.
+    //
+    // Normally the RPC node would simulate the transaction first, see that it
+    // fails, and refuse to send it. Here it is told not to simulate, so the
+    // transaction really lands. On chain, the transfer fails inside the System
+    // program, and the whole transaction is rolled back with it.
     println!("\n== relayed while the system PDA is unfunded ==");
     let (failed, outcome) =
         send_transaction_without_preflight(&client, &relayer, &relay, &[&relayer])?;
@@ -121,9 +125,10 @@ fn main() -> Result<()> {
         bail!("the nonce moved although the relay failed");
     }
 
-    // The hazard. Nothing was signed again: these are the same instructions,
-    // sent after the system PDA was funded. Anyone who kept them could do
-    // this, at any later time.
+    // Now fund the system PDA and relay again. This is the hazard. Nothing is
+    // signed again: these are the exact same two instructions as before.
+    // Anyone who kept them could send them at any later time, and they would
+    // land once the funds are there.
     println!("\n== relayed again after the system PDA is funded ==");
     send_transaction(
         &client,
@@ -149,11 +154,15 @@ fn main() -> Result<()> {
         bail!("the nonce did not advance to the value computed at signing time");
     }
 
-    // The fix. The Advance instruction carries a last valid slot, and the
-    // cold key's signature covers it, so a relayer cannot remove or extend it.
-    // `sign_advance_instruction_ed25519` always signs "never expires", so a
-    // deadline takes the three calls it wraps: build the message with the
-    // slot, sign this account's digest of it, and assemble the instruction.
+    // The fix. Vector has a deadline built in: the Advance instruction carries
+    // a last valid slot. The cold key's signature covers that slot, so a
+    // relayer cannot remove or extend it.
+    //
+    // `sign_advance_instruction_ed25519`, used above, cannot set the slot; it
+    // always signs "never expires". So the three steps it does are written out
+    // here: build the message with the deadline in it, compute this account's
+    // digest of the message and sign it, then put the signature into an
+    // Advance instruction.
     println!("\n== signing a second action with a deadline ==");
     let deadline = client.get_slot()? + DEADLINE_SLOTS;
     let advance_signer = AdvanceSigner::new(&ED25519, &identity);
@@ -170,8 +179,10 @@ fn main() -> Result<()> {
     println!("  action:   transfer {AMOUNT} lamports from the system PDA");
     println!("  deadline: slot {deadline} ({DEADLINE_SLOTS} slots from now)");
 
-    // Hold the two instructions back until the deadline has passed. The
-    // system PDA has the funds this time; only the deadline is in the way.
+    // Wait until the deadline has passed, then relay, to show that a late
+    // relay is refused. The system PDA has the funds this time, so the only
+    // thing in the way is the deadline. The RPC node rejects it when it
+    // simulates the transaction.
     println!("\n== relayed after the deadline ==");
     while client.get_slot()? <= deadline {
         sleep(Duration::from_millis(400));
@@ -186,7 +197,8 @@ fn main() -> Result<()> {
     if balance != AMOUNT {
         bail!("the expired action moved funds");
     }
-    // The nonce did not move, so the cold key can sign a replacement over it.
+    // The expired action never ran, so the nonce did not move. The cold key
+    // can sign a new action over the same nonce.
     let unchanged = fetch_nonce(&client, &vector)?;
     println!("  nonce after: {unchanged} (unchanged; a new action can use it)");
     if unchanged != advanced {

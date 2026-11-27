@@ -82,9 +82,13 @@ const relay = [advance, passthrough];
 console.log(`  action:     transfer ${AMOUNT} lamports from the system PDA`);
 console.log(`  next nonce: ${nextNonceValue}`);
 
-// Relay it anyway. The RPC node is told not to simulate first, so the
-// transaction really lands. The transfer fails inside the System program, and
-// the whole transaction is rolled back with it.
+// The system PDA holds no funds, so this transfer cannot succeed yet. Relay it
+// anyway, to see what a failed attempt leaves behind.
+//
+// Normally the RPC node would simulate the transaction first, see that it
+// fails, and refuse to send it. Here it is told not to simulate, so the
+// transaction really lands. On chain, the transfer fails inside the System
+// program, and the whole transaction is rolled back with it.
 console.log('\n== relayed while the system PDA is unfunded ==');
 const failed = await sendTransactionWithoutPreflight(connection, relayer, relay, [relayer]);
 console.log(`  landed:        ${failed.signature}`);
@@ -115,9 +119,10 @@ if (unchanged !== base58(nonce)) {
     throw new Error('the nonce moved although the relay failed');
 }
 
-// The hazard. Nothing was signed again: these are the same instructions, sent
-// after the system PDA was funded. Anyone who kept them could do this, at any
-// later time.
+// Now fund the system PDA and relay again. This is the hazard. Nothing is
+// signed again: these are the exact same two instructions as before. Anyone
+// who kept them could send them at any later time, and they would land once
+// the funds are there.
 console.log('\n== relayed again after the system PDA is funded ==');
 await sendTransaction(
     connection,
@@ -139,17 +144,20 @@ if (base58(advancedNonce) !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
-// The fix. The Advance instruction carries a last valid slot, and the cold
-// key's signature covers it, so a relayer cannot remove or extend it. It is
-// the last argument of the same signing function.
+// The fix. Vector has a deadline built in: the Advance instruction carries a
+// last valid slot. The cold key's signature covers that slot, so a relayer
+// cannot remove or extend it. The slot is the last argument of the signing
+// function used above.
 console.log('\n== signing a second action with a deadline ==');
 const deadline = BigInt(await connection.getSlot()) + DEADLINE_SLOTS;
 const timedAdvance = signAdvanceInstructionEd25519(signingKey, advancedNonce, [], [passthrough], undefined, deadline);
 console.log(`  action:   transfer ${AMOUNT} lamports from the system PDA`);
 console.log(`  deadline: slot ${deadline} (${DEADLINE_SLOTS} slots from now)`);
 
-// Hold the two instructions back until the deadline has passed. The system
-// PDA has the funds this time; only the deadline is in the way.
+// Wait until the deadline has passed, then relay, to show that a late relay is
+// refused. The system PDA has the funds this time, so the only thing in the
+// way is the deadline. The RPC node rejects it when it simulates the
+// transaction.
 console.log('\n== relayed after the deadline ==');
 while (BigInt(await connection.getSlot()) <= deadline) {
     await new Promise(resolve => setTimeout(resolve, 400));
@@ -159,7 +167,8 @@ await expectRejected([timedAdvance, passthrough], VectorError.Expired, "Vector's
 if (BigInt(await connection.getBalance(recipient)) !== AMOUNT) {
     throw new Error('the expired action moved funds');
 }
-// The nonce did not move, so the cold key can sign a replacement over it.
+// The expired action never ran, so the nonce did not move. The cold key can
+// sign a new action over the same nonce.
 const stillUnchanged = base58(await fetchNonce());
 console.log(`  nonce after: ${stillUnchanged} (unchanged; a new action can use it)`);
 if (stillUnchanged !== base58(advancedNonce)) {

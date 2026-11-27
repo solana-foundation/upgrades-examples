@@ -74,9 +74,13 @@ fn main() -> Result<()> {
     println!("  action:     transfer {AMOUNT} lamports from the PDA");
     println!("  next nonce: {next_nonce_value}");
 
-    // Relay it anyway. The RPC node is told not to simulate first, so the
-    // transaction really lands. The transfer fails inside the System program,
-    // and the whole transaction is rolled back with it.
+    // The PDA holds no funds, so this transfer cannot succeed yet. Relay it
+    // anyway, to see what a failed attempt leaves behind.
+    //
+    // Normally the RPC node would simulate the transaction first, see that it
+    // fails, and refuse to send it. Here it is told not to simulate, so the
+    // transaction really lands. On chain, the transfer fails inside the System
+    // program, and the whole transaction is rolled back with it.
     println!("\n== relayed while the PDA is unfunded ==");
     let (failed, outcome) =
         send_transaction_without_preflight(&client, &relayer, &submit, &[&relayer])?;
@@ -101,9 +105,10 @@ fn main() -> Result<()> {
         bail!("the nonce moved although the relay failed");
     }
 
-    // The hazard. Nothing was signed again: these are the same bytes, sent
-    // after the PDA was funded. Anyone who kept them could do this, at any
-    // later time.
+    // Now fund the PDA and relay again. This is the hazard. Nothing is signed
+    // again: these are the exact same bytes as before. Anyone who kept them
+    // could send them at any later time, and they would land once the funds
+    // are there.
     println!("\n== relayed again after the PDA is funded ==");
     send_transaction(
         &client,
@@ -159,8 +164,10 @@ fn main() -> Result<()> {
     println!("  action:   transfer {AMOUNT} lamports from the PDA");
     println!("  deadline: slot {deadline} ({DEADLINE_SLOTS} slots from now)");
 
-    // Hold the authorization back until the deadline has passed. The PDA has
-    // the funds this time; only the deadline is in the way.
+    // Wait until the deadline has passed, then relay, to show that a late
+    // relay is refused. The PDA has the funds this time, so the only thing in
+    // the way is the deadline. The RPC node rejects it when it simulates the
+    // transaction.
     println!("\n== relayed after the deadline ==");
     while client.get_slot()? <= deadline {
         sleep(Duration::from_millis(400));
@@ -175,7 +182,8 @@ fn main() -> Result<()> {
     if balance != AMOUNT {
         bail!("the expired action moved funds");
     }
-    // The nonce did not move, so the cold key can sign a replacement over it.
+    // The expired action never ran, so the nonce did not move. The cold key
+    // can sign a new action over the same nonce.
     let unchanged = fetch_nonce(&client, &nonce_account)?.nonce;
     println!("  nonce after: {unchanged} (unchanged; a new action can use it)");
     if unchanged != advanced {
