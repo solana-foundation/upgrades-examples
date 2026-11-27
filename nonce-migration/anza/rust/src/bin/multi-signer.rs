@@ -15,6 +15,7 @@ use psigner::cluster::{
 use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use psigner::token::{create_mint, fetch_balance, mint_to_ata, ui_amount, DECIMALS};
+use solana_address::Address;
 use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
 use solana_message::{v1, VersionedMessage};
@@ -158,7 +159,7 @@ fn main() -> Result<()> {
     // Signer program rejects it, because the authorization message lists two
     // required signers and one of them has not signed.
     println!("\n== relayed with one signature ==");
-    let partial = signatures(&authorization, &[(&first, first_signature)])?;
+    let partial = signatures(&authorization, &[(first.pubkey(), first_signature)])?;
     expect_missing_signature(send_transaction(
         &client,
         &relayer,
@@ -169,7 +170,10 @@ fn main() -> Result<()> {
     println!("\n== relayed with both ==");
     let both = signatures(
         &authorization,
-        &[(&second, second_signature), (&first, first_signature)],
+        &[
+            (second.pubkey(), second_signature),
+            (first.pubkey(), first_signature),
+        ],
     )?;
     let landed = send_transaction(
         &client,
@@ -212,19 +216,22 @@ fn main() -> Result<()> {
 /// looks up each approver's position in the message and puts its signature
 /// there. A signer with no collected signature gets `None`.
 ///
+/// It takes each approver's address, not its key. The relay side only ever
+/// has addresses and signatures; the cold keys stay on their own machines.
+///
 /// Hand-written, and should ideally be provided by the upstream client. The
 /// crate's `sign_and_submit` does this ordering, but only when all the keys
 /// sign together in one process.
 fn signatures(
     authorization: &v1::Message,
-    collected: &[(&Keypair, Signature)],
+    collected: &[(Address, Signature)],
 ) -> Result<Vec<Option<Signature>>> {
     let required = usize::from(authorization.header.num_required_signatures);
     let mut slots = vec![None; required];
     for (approver, signature) in collected {
         let slot = authorization.account_keys[..required]
             .iter()
-            .position(|key| *key == approver.pubkey())
+            .position(|key| key == approver)
             .context("the approver is not a signer of the authorization message")?;
         slots[slot] = Some(*signature);
     }
