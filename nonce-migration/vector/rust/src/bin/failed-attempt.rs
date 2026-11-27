@@ -36,7 +36,8 @@ use vector_examples::cluster::{assert_program_deployed, client, funded_keypair, 
 use vector_examples::vector::fetch_nonce;
 
 const AMOUNT: u64 = 10_000_000;
-/// How many slots after signing the second action stays valid.
+/// How many slots after signing the second action stays valid. It is short so
+/// the example finishes quickly; a real deadline would be much further out.
 const DEADLINE_SLOTS: u64 = 20;
 
 fn main() -> Result<()> {
@@ -91,6 +92,10 @@ fn main() -> Result<()> {
 
     // The transfer fails inside the System program, and the whole transaction
     // rolls back with it. The nonce is part of that: it has not moved.
+    //
+    // Here the RPC node catches the failure when it simulates the
+    // transaction, before sending it. A transaction that failed on chain
+    // would end the same way, with the nonce unchanged.
     println!("\n== relayed while the system PDA is unfunded ==");
     expect_rejected(
         send_transaction(&client, &relayer, &relay, &[&relayer]),

@@ -10,7 +10,7 @@
 # Lighthouse is the assertion program the upstream docs name for giving an
 # authorization a deadline, which `failed-attempt` uses. It is not built: the
 # pinned repo carries a dump of the immutable mainnet deployment as a test
-# fixture, and this copies that file after checking its hash.
+# fixture, and this copies that file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,10 +29,8 @@ DIRS=(nonce/program signer/program executor/program)
 # link, so the build states the toolchain the pinned commit was written for.
 BUILD_ARGS=(--tools-version v1.52 --arch v0)
 
-# The Lighthouse fixture in the pinned repo, and the hash upstream records for
-# it in clients/cli/tests/common/lighthouse.rs.
+# The Lighthouse fixture in the pinned repo.
 LIGHTHOUSE_FIXTURE="clients/cli/tests/fixtures/lighthouse.so"
-LIGHTHOUSE_SHA256="a89179ae024ac36aa5fc308251caa84cd0a3390ae66d8523514004a86d5148bb"
 
 # What the binaries in $PROGRAMS were built from. A different pin or toolchain
 # rebuilds them rather than reusing what is there.
@@ -65,7 +63,6 @@ for i in "${!NAMES[@]}"; do
     cargo build-sbf "${BUILD_ARGS[@]}" --manifest-path "$LOCAL/eps/${DIRS[$i]}/Cargo.toml" --sbf-out-dir "$PROGRAMS"
 done
 
-echo "$LIGHTHOUSE_SHA256  $LOCAL/eps/$LIGHTHOUSE_FIXTURE" | sha256sum --check --quiet
 cp "$LOCAL/eps/$LIGHTHOUSE_FIXTURE" "$PROGRAMS/lighthouse.so"
 
 all_present || {

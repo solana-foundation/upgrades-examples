@@ -43,7 +43,10 @@ import { authorizationMessage, executionMessage } from './lib/signer';
 import { createNonceAccount, nextNonce } from './lib/spl-nonce';
 
 const AMOUNT = 10_000_000n;
-/** How many slots after signing the second action stays valid. */
+/**
+ * How many slots after signing the second action stays valid. It is short so
+ * the example finishes quickly; a real deadline would be much further out.
+ */
 const DEADLINE_SLOTS = 20n;
 
 const relayer = await createFundedClient(2_000_000_000n);
@@ -74,8 +77,12 @@ const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 console.log(`  action:     transfer ${AMOUNT} lamports from the PDA`);
 console.log(`  next nonce: ${nextNonceValue}`);
 
-// The transfer fails inside the System program, and the whole relay rolls
-// back with it. The nonce is part of that: it has not moved.
+// The transfer fails inside the System program, and the whole relay rolls back
+// with it. The nonce is part of that: it has not moved.
+//
+// Here the RPC node catches the failure when it simulates the transaction,
+// before sending it. A transaction that failed on chain would end the same
+// way, with the nonce unchanged.
 console.log('\n== relayed while the PDA is unfunded ==');
 await expectRejected(
     authorization,

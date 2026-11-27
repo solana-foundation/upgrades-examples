@@ -31,7 +31,10 @@ import {
 import { assertProgramDeployed, connect, fundedKeypair, sendTransaction } from './lib/cluster';
 
 const AMOUNT = 10_000_000n;
-/** How many slots after signing the second action stays valid. */
+/**
+ * How many slots after signing the second action stays valid. It is short so
+ * the example finishes quickly; a real deadline would be much further out.
+ */
 const DEADLINE_SLOTS = 20n;
 /** The System program's error for a transfer the source cannot afford. */
 const SYSTEM_ERROR_INSUFFICIENT_FUNDS = 1;
@@ -75,6 +78,10 @@ console.log(`  next nonce: ${nextNonceValue}`);
 
 // The transfer fails inside the System program, and the whole transaction
 // rolls back with it. The nonce is part of that: it has not moved.
+//
+// Here the RPC node catches the failure when it simulates the transaction,
+// before sending it. A transaction that failed on chain would end the same
+// way, with the nonce unchanged.
 console.log('\n== relayed while the system PDA is unfunded ==');
 await expectRejected(relay, SYSTEM_ERROR_INSUFFICIENT_FUNDS, "the System program's insufficient funds error");
 const unchanged = base58(await fetchNonce());
