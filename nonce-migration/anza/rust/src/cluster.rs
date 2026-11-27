@@ -113,10 +113,12 @@ pub fn send_transaction_without_preflight(
     instructions: &[Instruction],
     signers: &[&Keypair],
 ) -> Result<(Signature, Result<(), TransactionError>)> {
+    let (blockhash, last_valid_block_height) =
+        client.get_latest_blockhash_with_commitment(client.commitment())?;
     let message = v1::Message::try_compile_with_config(
         &payer.pubkey(),
         instructions,
-        client.get_latest_blockhash()?,
+        blockhash,
         TRANSACTION_CONFIG,
     )
     .context("failed to compile the transaction")?;
@@ -128,10 +130,15 @@ pub fn send_transaction_without_preflight(
             ..RpcSendTransactionConfig::default()
         },
     )?;
-    // Wait until the cluster has processed it, one way or the other.
+    // Wait until the cluster has processed it, one way or the other. A
+    // transaction can also be dropped without landing. Once its blockhash has
+    // expired it never will land, so stop waiting then.
     loop {
         if let Some(outcome) = client.get_signature_status(&signature)? {
             return Ok((signature, outcome));
+        }
+        if client.get_block_height()? > last_valid_block_height {
+            bail!("transaction {signature} was dropped: its blockhash expired before it landed");
         }
         sleep(Duration::from_millis(400));
     }

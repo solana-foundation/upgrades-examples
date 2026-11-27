@@ -121,11 +121,16 @@ export async function sendTransactionWithoutPreflight(
     await client.rpc
         .sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: 'base64', skipPreflight: true })
         .send();
-    // Wait until the cluster has processed it, one way or the other.
+    // Wait until the cluster has processed it, one way or the other. A
+    // transaction can also be dropped without landing. Once its blockhash has
+    // expired it never will land, so stop waiting then.
     for (;;) {
         const [status] = (await client.rpc.getSignatureStatuses([signature]).send()).value;
         if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
             return { err: status.err, signature };
+        }
+        if ((await client.rpc.getBlockHeight({ commitment: 'confirmed' }).send()) > latest.lastValidBlockHeight) {
+            throw new Error(`transaction ${signature} was dropped: its blockhash expired before it landed`);
         }
         await new Promise(resolve => setTimeout(resolve, 400));
     }
