@@ -167,7 +167,7 @@ console.log('\n== signing the migration on the cold side ==');
 const pdaSigner = createNoopSigner(pda);
 const pdaTokens = await associatedTokenAddress(pda, mint);
 const handover = [
-    // SOL.
+    // Move SOL from the cold key to the PDA.
     getTransferSolInstruction({ amount: MIGRATED_SOL, destination: pda, source: cold }),
     // Tokens: create the PDA's token account, then move the balance.
     await getCreateAssociatedTokenIdempotentInstructionAsync({ mint, owner: pda, payer: cold }),
@@ -270,12 +270,14 @@ assertIsTransactionWithDurableNonceLifetime(transaction);
 console.log(`  execution message: ${handover.length} instructions, ${migration.length} bytes`);
 console.log(`  signed by:         ${JSON.stringify(Object.keys(transaction.signatures))} (the cold key)`);
 
+// Send the migration transaction. The cold key has already signed it and
+// pays its fee, so no other signature is needed. Anyone can send it.
 console.log('\n== relayed ==');
 await sendAndConfirmDurableNonceTransactionFactory(coldClient)(transaction, { commitment: 'confirmed' });
 console.log(`  landed:        ${getSignatureFromTransaction(transaction)}`);
 console.log(`  compute units: ${await computeUnits(getSignatureFromTransaction(transaction))}`);
 
-// Everything now names the PDA.
+// Read each thing back and check that it now belongs to the PDA.
 console.log('\n== after: the PDA controls everything ==');
 const pdaSol = await fetchSol(pda);
 console.log(`  SOL:           ${pdaSol} lamports`);

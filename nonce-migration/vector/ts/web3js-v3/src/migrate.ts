@@ -182,7 +182,7 @@ console.log('\n== signing the migration on the cold side ==');
 const pdaSigner = createNoopSigner(pda.address);
 const pdaTokens = await associatedTokenAddress(pda, mint);
 const handover = [
-    // SOL.
+    // Move SOL from the cold key to the system PDA.
     SystemProgram.transfer({ fromPubkey: cold.publicKey, lamports: MIGRATED_SOL, toPubkey: pda }),
     ...toTransactionInstructions(
         sequentialInstructionPlan([
@@ -278,6 +278,8 @@ await transaction.sign([cold]);
 console.log(`  Passthrough instruction: ${handover.length} instructions, ${migration.data.length} bytes of data`);
 console.log(`  signed by:               ${cold.publicKey.toBase58()} (the cold key)`);
 
+// Send the migration transaction. The cold key has already signed it and
+// pays its fee, so no other signature is needed. Anyone can send it.
 console.log('\n== relayed ==');
 const migrated = await connection.sendTransaction(transaction);
 await connection.confirmTransaction({
@@ -288,7 +290,7 @@ await connection.confirmTransaction({
 console.log(`  landed:        ${migrated}`);
 console.log(`  compute units: ${await computeUnits(migrated)}`);
 
-// Everything now names the PDA.
+// Read each thing back and check that it now belongs to the PDA.
 console.log('\n== after: the PDA controls everything ==');
 const pdaSol = BigInt(await connection.getBalance(pda));
 console.log(`  SOL:           ${pdaSol} lamports`);

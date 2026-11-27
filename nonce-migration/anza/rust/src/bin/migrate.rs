@@ -143,7 +143,7 @@ fn main() -> Result<()> {
     println!("\n== signing the migration on the cold side ==");
     let pda_tokens = get_associated_token_address(&pda, &mint);
     let handover = [
-        // SOL.
+        // Move SOL from the cold key to the PDA.
         system_instruction::transfer(&cold.pubkey(), &pda, MIGRATED_SOL),
         // Tokens: create the PDA's token account, then move the balance.
         create_associated_token_account_idempotent(&cold.pubkey(), &pda, &mint, &TOKEN_PROGRAM),
@@ -246,6 +246,8 @@ fn main() -> Result<()> {
     );
     println!("  signed by:         {} (the cold key)", cold.pubkey());
 
+    // Send the migration transaction. The cold key has already signed it and
+    // pays its fee, so no other signature is needed. Anyone can send it.
     println!("\n== relayed ==");
     let landed = client.send_and_confirm_transaction(&transaction)?;
     println!("  landed:        {landed}");
@@ -253,7 +255,7 @@ fn main() -> Result<()> {
         println!("  compute units: {units}");
     }
 
-    // Everything now names the PDA.
+    // Read each thing back and check that it now belongs to the PDA.
     println!("\n== after: the PDA controls everything ==");
     let pda_sol = client.get_balance(&pda)?;
     println!("  SOL:           {pda_sol} lamports");
