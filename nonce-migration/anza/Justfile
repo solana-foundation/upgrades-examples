@@ -88,12 +88,19 @@ multi-signer:
 ts-multi-signer:
     cd ts/kit && pnpm exec tsx src/multi-signer.ts
 
-# A failed action keeps its nonce and lands later; an action signed with a deadline is rejected after it.
+# A relay that lands and fails keeps its nonce, and the same signed action lands later.
 failed-attempt:
     cd rust && cargo run --bin failed-attempt
 
 ts-failed-attempt:
     cd ts/kit && pnpm exec tsx src/failed-attempt.ts
+
+# An action signed with a deadline is rejected once that slot has passed.
+deadline:
+    cd rust && cargo run --bin deadline
+
+ts-deadline:
+    cd ts/kit && pnpm exec tsx src/deadline.ts
 
 # Run every example end to end against a fresh validator.
 demo:
@@ -110,3 +117,5 @@ _demo-inner:
     just ts-multi-signer
     just failed-attempt
     just ts-failed-attempt
+    just deadline
+    just ts-deadline

@@ -1,24 +1,19 @@
 /**
- * A cold-signed action that fails can be relayed again later. A deadline
- * limits how long that stays possible.
+ * A cold-signed action that fails can be relayed again later.
  *
- * First the retry. The cold key signs a transfer the system PDA cannot afford.
- * The relay lands on chain and fails. A failed transaction is rolled back
- * completely, and here that includes the nonce. So the signature is still
- * valid: once the PDA is funded, the same two instructions land. A durable
- * nonce transaction that landed and failed would have used up its nonce.
+ * The cold key signs a transfer the system PDA cannot afford. The relay lands
+ * on chain and fails. A failed transaction is rolled back completely, and
+ * here that includes the nonce. So the signature is still valid: once the PDA
+ * is funded, the same two instructions land, with nothing signed again.
  *
- * The action can be retried without signing again. It stays valid until its
- * nonce moves.
- *
- * Then the deadline. The cold key signs a second transfer with a deadline, the
- * last slot the `Advance` instruction accepts. Relayed after that slot, it is
- * rejected.
+ * A durable nonce transaction that landed and failed would have used up its
+ * nonce. To stop an action from staying valid, sign it with a deadline; see
+ * the `deadline` example.
  *
  * Run with `just ts-failed-attempt`.
  */
 
-import { Keypair, PublicKey, SendTransactionError, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
 
 import {
     advanceVectorDigest,
@@ -29,7 +24,6 @@ import {
     findSystemPda,
     findVectorPda,
     signAdvanceInstructionEd25519,
-    VectorError,
 } from './client';
 import {
     assertProgramDeployed,
@@ -40,11 +34,6 @@ import {
 } from './lib/cluster';
 
 const AMOUNT = 10_000_000n;
-/**
- * How many slots after signing the second action stays valid. It is short so
- * the example finishes quickly; a real deadline would be much further out.
- */
-const DEADLINE_SLOTS = 20n;
 /** The System program's error for a transfer the source cannot afford. */
 const SYSTEM_ERROR_INSUFFICIENT_FUNDS = 1;
 
@@ -148,57 +137,4 @@ console.log(`  nonce after:       ${base58(advancedNonce)}`);
 console.log(`  expected:          ${nextNonceValue}`);
 if (base58(advancedNonce) !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
-}
-
-// The deadline. Vector has one built in: the Advance instruction carries a
-// last valid slot. The cold key's signature covers that slot, so a relayer
-// cannot remove or extend it. The slot is the last argument of the signing
-// function used above.
-console.log('\n== signing a second action with a deadline ==');
-const deadline = BigInt(await connection.getSlot()) + DEADLINE_SLOTS;
-const timedAdvance = signAdvanceInstructionEd25519(signingKey, advancedNonce, [], [passthrough], undefined, deadline);
-console.log(`  action:   transfer ${AMOUNT} lamports from the system PDA`);
-console.log(`  deadline: slot ${deadline} (${DEADLINE_SLOTS} slots from now)`);
-
-// Wait until the deadline has passed, then relay, to show that a late relay is
-// refused. The system PDA has the funds this time, so the only thing in the
-// way is the deadline. The RPC node rejects it when it simulates the
-// transaction.
-console.log('\n== relayed after the deadline ==');
-while (BigInt(await connection.getSlot()) <= deadline) {
-    await new Promise(resolve => setTimeout(resolve, 400));
-}
-console.log(`  slot:        ${await connection.getSlot()}`);
-await expectRejected([timedAdvance, passthrough], VectorError.Expired, "Vector's Expired");
-if (BigInt(await connection.getBalance(recipient)) !== AMOUNT) {
-    throw new Error('the expired action moved funds');
-}
-// The expired action never ran, so the nonce did not move. The cold key can
-// sign a new action over the same nonce.
-const stillUnchanged = base58(await fetchNonce());
-console.log(`  nonce after: ${stillUnchanged} (unchanged; a new action can use it)`);
-if (stillUnchanged !== base58(advancedNonce)) {
-    throw new Error('the nonce moved although the relay failed');
-}
-
-/**
- * Relays `instructions` and throws unless the relay is rejected with the
- * custom program error `code`. web3.js reports a rejected send as text only,
- * so this matches on the message; a structured error should ideally be
- * provided upstream.
- */
-async function expectRejected(instructions: TransactionInstruction[], code: number, name: string) {
-    try {
-        await sendTransaction(connection, relayer, instructions, [relayer]);
-    } catch (error) {
-        if (
-            !(error instanceof SendTransactionError) ||
-            !error.transactionError.message.endsWith(`custom program error: 0x${code.toString(16)}`)
-        ) {
-            throw new Error(`expected ${name}`, { cause: error });
-        }
-        console.log(`  rejected: ${error.transactionError.message} (${name})`);
-        return;
-    }
-    throw new Error(`expected ${name}, but the relay landed`);
 }

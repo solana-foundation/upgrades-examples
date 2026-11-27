@@ -1,25 +1,17 @@
-//! A cold-signed action that fails can be relayed again later. A deadline
-//! limits how long that stays possible.
+//! A cold-signed action that fails can be relayed again later.
 //!
-//! First the retry. The cold key signs a transfer the PDA cannot afford. The
-//! relay lands on chain and fails. A failed transaction is rolled back
-//! completely, and here that includes the nonce. So the signed authorization
-//! is still valid: once the PDA is funded, the same bytes land. A durable
-//! nonce transaction that landed and failed would have used up its nonce.
+//! The cold key signs a transfer the PDA cannot afford. The relay lands on
+//! chain and fails. A failed transaction is rolled back completely, and here
+//! that includes the nonce. So the signed authorization is still valid: once
+//! the PDA is funded, the same bytes land, with nothing signed again.
 //!
-//! The action can be retried without signing again. It stays valid until its
-//! nonce moves.
-//!
-//! Then the deadline. The cold key signs a second transfer with a deadline, an
-//! instruction that fails after a given slot. Relayed after that slot, it is
-//! rejected.
+//! A durable nonce transaction that landed and failed would have used up its
+//! nonce. To stop an action from staying valid, sign it with a deadline; see
+//! the `deadline` example.
 //!
 //! Run with `just failed-attempt`.
 
 use anyhow::{bail, Result};
-use lighthouse_sdk::errors::LighthouseError;
-use lighthouse_sdk::instructions::AssertSysvarClockBuilder;
-use lighthouse_sdk::types::{IntegerOperator, LogLevel, SysvarClockAssertion};
 use psigner::cluster::{
     assert_programs_deployed, client, compute_units, funded_keypair, send_transaction,
     send_transaction_without_preflight,
@@ -28,8 +20,6 @@ use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
-use solana_rpc_client_api::client_error::Error as ClientError;
-use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_system_interface::error::SystemError;
 use solana_system_interface::instruction as system_instruction;
@@ -37,14 +27,8 @@ use solana_transaction_error::TransactionError;
 use spl_ed25519_signer_client::signing::sign_and_submit;
 use spl_ed25519_signer_client::ProgrammaticSigner;
 use spl_message_executor_client::instruction::execute;
-use std::thread::sleep;
-use std::time::Duration;
 
 const AMOUNT: u64 = 10_000_000;
-/// How many slots after signing the second action stays valid. It is short so
-/// the example finishes quickly; a real deadline would be much further out.
-const DEADLINE_SLOTS: u64 = 20;
-
 fn main() -> Result<()> {
     let client = client();
     assert_programs_deployed(&client)?;
@@ -139,81 +123,5 @@ fn main() -> Result<()> {
     if advanced != next_nonce_value {
         bail!("the nonce did not advance to the value computed at signing time");
     }
-
-    // The deadline. The programmatic signer has no deadline of its own. The
-    // upstream docs say to add one with an instruction that fails after the
-    // deadline, and name Lighthouse, a separate assertion program, for it.
-    // So the second action starts with a Lighthouse instruction that checks
-    // "the current slot is at most the deadline". It is inside the execution
-    // message, so the cold key's signature covers it and a relayer cannot
-    // remove or change it.
-    println!("\n== signing a second action with a deadline ==");
-    let deadline = client.get_slot()? + DEADLINE_SLOTS;
-    let execution = execution_message(
-        &pda,
-        &[
-            AssertSysvarClockBuilder::new()
-                .log_level(LogLevel::Silent)
-                .assertion(SysvarClockAssertion::Slot {
-                    value: deadline,
-                    operator: IntegerOperator::LessThanOrEqual,
-                })
-                .instruction(),
-            system_instruction::transfer(&pda, &recipient, AMOUNT),
-        ],
-        advanced,
-    )?;
-    let submit = [sign_and_submit(
-        &execute(&nonce_account, &pda, &execution),
-        &[&authority],
-    )?];
-    println!("  action:   transfer {AMOUNT} lamports from the PDA");
-    println!("  deadline: slot {deadline} ({DEADLINE_SLOTS} slots from now)");
-
-    // Wait until the deadline has passed, then relay, to show that a late
-    // relay is refused. The PDA has the funds this time, so the only thing in
-    // the way is the deadline. The RPC node rejects it when it simulates the
-    // transaction.
-    println!("\n== relayed after the deadline ==");
-    while client.get_slot()? <= deadline {
-        sleep(Duration::from_millis(400));
-    }
-    println!("  slot:        {}", client.get_slot()?);
-    expect_rejected(
-        send_transaction(&client, &relayer, &submit, &[&relayer]),
-        LighthouseError::AssertionFailed as u32,
-        "Lighthouse's AssertionFailed",
-    )?;
-    let balance = client.get_balance(&recipient)?;
-    if balance != AMOUNT {
-        bail!("the expired action moved funds");
-    }
-    // The expired action never ran, so the nonce did not move. The cold key
-    // can sign a new action over the same nonce.
-    let unchanged = fetch_nonce(&client, &nonce_account)?.nonce;
-    println!("  nonce after: {unchanged} (unchanged; a new action can use it)");
-    if unchanged != advanced {
-        bail!("the nonce moved although the relay failed");
-    }
     Ok(())
-}
-
-/// Fails unless a relay was rejected with the custom program error `code`.
-fn expect_rejected(relay: Result<Signature>, code: u32, name: &str) -> Result<()> {
-    let error = match relay {
-        Ok(signature) => bail!("expected {name}, but the relay landed as {signature}"),
-        Err(error) => error,
-    };
-    let rejection = error
-        .downcast_ref::<ClientError>()
-        .and_then(ClientError::get_transaction_error);
-    match rejection {
-        Some(TransactionError::InstructionError(_, InstructionError::Custom(found)))
-            if found == code =>
-        {
-            println!("  rejected: custom program error {found} ({name})");
-            Ok(())
-        }
-        _ => Err(error.context(format!("expected {name}"))),
-    }
 }

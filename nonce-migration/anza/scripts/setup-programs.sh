@@ -8,9 +8,9 @@
 # .local/programs/<name>.so, and validator.sh refuses to start without them.
 #
 # Lighthouse is the assertion program the upstream docs name for giving an
-# authorization a deadline, which `failed-attempt` uses. It is not built: the
-# pinned repo carries a dump of the immutable mainnet deployment as a test
-# fixture, and this copies that file.
+# authorization a deadline, which the `deadline` example uses. It is not
+# built: the pinned repo carries a dump of the immutable mainnet deployment as
+# a test fixture, and this copies that file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

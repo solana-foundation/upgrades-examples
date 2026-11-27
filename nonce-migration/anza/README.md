@@ -39,7 +39,8 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject a replay | `just sign-relay` | `just ts-sign-relay` |
 | Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` |
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` |
-| A failed action keeps its nonce and lands later; an action signed with a deadline is rejected after it | `just failed-attempt` | `just ts-failed-attempt` |
+| A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
+| An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -63,7 +64,9 @@ The five operations in the directory README are mostly calls into the official c
 
 `multi-signer` is two approvers on one withdrawal. Each cold key has its own PDA, and the 1,000 tokens belong to a Token program multisig whose two signers are those PDAs, so neither approver can move them alone. One authorization message names both cold keys; each signs the same bytes on its own machine, the second one first here, and the hot key puts the two signatures in the message's signer order. A relay with one signature is rejected with the Signer's `MissingSignature`; with both it lands, and both PDAs are promoted for the one `TransferChecked`. It costs about 132,000 compute units, and the authorization message is 760 bytes.
 
-`failed-attempt` shows the behaviour that differs most from a durable nonce. The cold key signs a transfer the PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same signed bytes then land once the PDA is funded. A durable nonce transaction that landed and failed would have used up its nonce. Then it signs a second transfer with a deadline 20 slots ahead, waits past it, and the relay is rejected with Lighthouse's `AssertionFailed` while the nonce stays where it was.
+`failed-attempt` shows what a failed relay leaves behind. The cold key signs a transfer the PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same signed bytes then land once the PDA is funded, with nothing signed again. A durable nonce transaction that landed and failed would have used up its nonce.
+
+`deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Lighthouse's `AssertionFailed`, no funds move, and the nonce is unchanged.
 
 ## The three layers
 
@@ -128,7 +131,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | `@solana-program/system` | 0.16.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
 | `spl-token-interface` | 3.0.0 | the version the pinned Anza CLI builds `migrate token` with; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the Token program plugin; its `createMint`, `mintToATA`, and `transferToATA` instruction plans |
-| Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `failed-attempt` uses for a deadline |
+| Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `deadline` uses |
 | `lighthouse-sdk` | 3.0.0 (crates.io and npm) | builds the Lighthouse instruction and names its error code |
 
 ## Configuration
@@ -150,7 +153,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, and `failed-attempt` requires the first relay and the expired one to be rejected with the nonce unchanged. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, and `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged. CI runs `just check` and `just demo`.
 
 ## Layout
 

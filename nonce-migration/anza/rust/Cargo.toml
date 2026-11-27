@@ -28,7 +28,7 @@ spl-nonce-interface = "2.0.0"
 spl-associated-token-account-interface = "2.0.0"
 spl-token-interface = "3.0.0"
 
-# The client for Lighthouse, the assertion program `failed-attempt` uses to
+# The client for Lighthouse, the assertion program the `deadline` example uses to
 # give an authorization a deadline.
 lighthouse-sdk = "3.0.0"
 

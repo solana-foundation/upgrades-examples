@@ -1,40 +1,28 @@
-//! A cold-signed action that fails can be relayed again later. A deadline
-//! limits how long that stays possible.
+//! A cold-signed action that fails can be relayed again later.
 //!
-//! First the retry. The cold key signs a transfer the system PDA cannot
-//! afford. The relay lands on chain and fails. A failed transaction is rolled
-//! back completely, and here that includes the nonce. So the signature is
-//! still valid: once the PDA is funded, the same two instructions land. A
-//! durable nonce transaction that landed and failed would have used up its
-//! nonce.
+//! The cold key signs a transfer the system PDA cannot afford. The relay
+//! lands on chain and fails. A failed transaction is rolled back completely,
+//! and here that includes the nonce. So the signature is still valid: once the
+//! PDA is funded, the same two instructions land, with nothing signed again.
 //!
-//! The action can be retried without signing again. It stays valid until its
-//! nonce moves.
-//!
-//! Then the deadline. The cold key signs a second transfer with a deadline,
-//! the last slot the `Advance` instruction accepts. Relayed after that slot,
-//! it is rejected.
+//! A durable nonce transaction that landed and failed would have used up its
+//! nonce. To stop an action from staying valid, sign it with a deadline; see
+//! the `deadline` example.
 //!
 //! Run with `just failed-attempt`.
 
 use anyhow::{bail, Result};
-use ed25519_dalek::{Signer as Ed25519Signer, SigningKey};
+use ed25519_dalek::SigningKey;
 use solana_hash::Hash;
 use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
-use solana_rpc_client_api::client_error::Error as ClientError;
-use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_system_interface::error::SystemError;
 use solana_system_interface::instruction as system_instruction;
 use solana_transaction_error::TransactionError;
-use std::thread::sleep;
-use std::time::Duration;
 use vector_core::{
-    advance_message, advance_vector_digest, create_initialize_ed25519,
-    create_multi_advance_instruction, create_system_passthrough_instruction, ed25519_pubkey,
-    find_system_pda, find_vector_pda, sign_advance_instruction_ed25519, signed, signer_digest,
-    AdvanceSigner, VectorError, ED25519,
+    advance_vector_digest, create_initialize_ed25519, create_system_passthrough_instruction,
+    ed25519_pubkey, find_system_pda, find_vector_pda, sign_advance_instruction_ed25519, ED25519,
 };
 use vector_examples::cluster::{
     assert_program_deployed, client, compute_units, funded_keypair, send_transaction,
@@ -43,10 +31,6 @@ use vector_examples::cluster::{
 use vector_examples::vector::fetch_nonce;
 
 const AMOUNT: u64 = 10_000_000;
-/// How many slots after signing the second action stays valid. It is short so
-/// the example finishes quickly; a real deadline would be much further out.
-const DEADLINE_SLOTS: u64 = 20;
-
 fn main() -> Result<()> {
     let client = client();
     assert_program_deployed(&client)?;
@@ -159,76 +143,5 @@ fn main() -> Result<()> {
     if advanced != next_nonce_value {
         bail!("the nonce did not advance to the value computed at signing time");
     }
-
-    // The deadline. Vector has one built in: the Advance instruction carries
-    // a last valid slot. The cold key's signature covers that slot, so a
-    // relayer cannot remove or extend it.
-    //
-    // `sign_advance_instruction_ed25519`, used above, cannot set the slot; it
-    // always signs "never expires". So the three steps it does are written out
-    // here: build the message with the deadline in it, compute this account's
-    // digest of the message and sign it, then put the signature into an
-    // Advance instruction.
-    println!("\n== signing a second action with a deadline ==");
-    let deadline = client.get_slot()? + DEADLINE_SLOTS;
-    let advance_signer = AdvanceSigner::new(&ED25519, &identity);
-    let message = advance_message(
-        deadline,
-        &[advance_signer],
-        &[],
-        std::slice::from_ref(&passthrough),
-        None,
-    );
-    let digest = signer_digest(&message, advanced.as_bytes(), &vector, &[]);
-    let signature = signing_key.sign(&signed(&digest)).to_bytes();
-    let advance = create_multi_advance_instruction(deadline, &[(advance_signer, &signature)]);
-    println!("  action:   transfer {AMOUNT} lamports from the system PDA");
-    println!("  deadline: slot {deadline} ({DEADLINE_SLOTS} slots from now)");
-
-    // Wait until the deadline has passed, then relay, to show that a late
-    // relay is refused. The system PDA has the funds this time, so the only
-    // thing in the way is the deadline. The RPC node rejects it when it
-    // simulates the transaction.
-    println!("\n== relayed after the deadline ==");
-    while client.get_slot()? <= deadline {
-        sleep(Duration::from_millis(400));
-    }
-    println!("  slot:        {}", client.get_slot()?);
-    expect_rejected(
-        send_transaction(&client, &relayer, &[advance, passthrough], &[&relayer]),
-        VectorError::Expired as u32,
-        "Vector's Expired",
-    )?;
-    let balance = client.get_balance(&recipient)?;
-    if balance != AMOUNT {
-        bail!("the expired action moved funds");
-    }
-    // The expired action never ran, so the nonce did not move. The cold key
-    // can sign a new action over the same nonce.
-    let unchanged = fetch_nonce(&client, &vector)?;
-    println!("  nonce after: {unchanged} (unchanged; a new action can use it)");
-    if unchanged != advanced {
-        bail!("the nonce moved although the relay failed");
-    }
     Ok(())
-}
-
-/// Fails unless a relay was rejected with the custom program error `code`.
-fn expect_rejected(relay: Result<Signature>, code: u32, name: &str) -> Result<()> {
-    let error = match relay {
-        Ok(signature) => bail!("expected {name}, but the relay landed as {signature}"),
-        Err(error) => error,
-    };
-    let rejection = error
-        .downcast_ref::<ClientError>()
-        .and_then(ClientError::get_transaction_error);
-    match rejection {
-        Some(TransactionError::InstructionError(_, InstructionError::Custom(found)))
-            if found == code =>
-        {
-            println!("  rejected: custom program error {found} ({name})");
-            Ok(())
-        }
-        _ => Err(error.context(format!("expected {name}"))),
-    }
 }

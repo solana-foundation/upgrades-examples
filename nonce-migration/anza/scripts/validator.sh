@@ -4,7 +4,7 @@
 # The three programs are loaded at the addresses they hold on devnet, so the
 # clients' hard-coded program ids work unchanged. They are loaded as upgradeable
 # programs with no authority, which is how a release would eventually look.
-# Lighthouse, which `failed-attempt` uses for a deadline, is loaded at its
+# Lighthouse, which the `deadline` example uses, is loaded at its
 # mainnet address.
 #
 # solana-test-validator activates every feature at genesis, so transaction v1 is
