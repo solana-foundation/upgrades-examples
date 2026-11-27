@@ -1,16 +1,19 @@
 /**
- * A cold-signed action that fails can be relayed again later, and a deadline
- * is what stops that.
+ * A cold-signed action that fails can be relayed again later. A deadline
+ * limits how long that stays possible.
  *
- * First the hazard. The cold key signs a transfer the system PDA cannot
- * afford. The relay lands on chain and fails. A failed transaction is rolled
- * back completely, and here that includes the nonce. So the signature is still
+ * First the retry. The cold key signs a transfer the system PDA cannot afford.
+ * The relay lands on chain and fails. A failed transaction is rolled back
+ * completely, and here that includes the nonce. So the signature is still
  * valid: once the PDA is funded, the same two instructions land. A durable
  * nonce transaction that landed and failed would have used up its nonce.
  *
- * Then the fix. The cold key signs a second transfer with a deadline, the
+ * The action can be retried without signing again. It stays valid until its
+ * nonce moves.
+ *
+ * Then the deadline. The cold key signs a second transfer with a deadline, the
  * last slot the `Advance` instruction accepts. Relayed after that slot, it is
- * rejected, and it always will be.
+ * rejected.
  *
  * Run with `just ts-failed-attempt`.
  */
@@ -119,10 +122,13 @@ if (unchanged !== base58(nonce)) {
     throw new Error('the nonce moved although the relay failed');
 }
 
-// Now fund the system PDA and relay again. This is the hazard. Nothing is
-// signed again: these are the exact same two instructions as before. Anyone
-// who kept them could send them at any later time, and they would land once
-// the funds are there.
+// Now fund the system PDA and relay again. Nothing is signed again: these are
+// the exact same two signed instructions that failed a moment ago.
+//
+// This time it lands. A failed attempt does not use up a signed action. The
+// action stays valid until the nonce moves. So it can be retried without the
+// cold key coming back online, and anyone who has a copy can relay it, at any
+// later time.
 console.log('\n== relayed again after the system PDA is funded ==');
 await sendTransaction(
     connection,
@@ -144,7 +150,7 @@ if (base58(advancedNonce) !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
-// The fix. Vector has a deadline built in: the Advance instruction carries a
+// The deadline. Vector has one built in: the Advance instruction carries a
 // last valid slot. The cold key's signature covers that slot, so a relayer
 // cannot remove or extend it. The slot is the last argument of the signing
 // function used above.
