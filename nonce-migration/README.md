@@ -101,7 +101,7 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `deadline` | an action signed with a deadline is rejected once that slot has passed | [Rust](anza/rust/src/bin/deadline.rs), [TypeScript](anza/ts/kit/src/deadline.ts) | [Rust](vector/rust/src/bin/deadline.rs), [TypeScript](vector/ts/web3js-v3/src/deadline.ts) |
 | `cancel` | sign an action, then cancel it by using up its nonce first | [Rust](anza/rust/src/bin/cancel.rs), [TypeScript](anza/ts/kit/src/cancel.ts) | [Rust](vector/rust/src/bin/cancel.rs), [TypeScript](vector/ts/web3js-v3/src/cancel.ts) |
 | `migrate` | move SOL, token balances, mint and freeze authority, and a locked stake account to the PDA in one checked transaction, then use them | [Rust](anza/rust/src/bin/migrate.rs), [TypeScript](anza/ts/kit/src/migrate.ts) | [Rust](vector/rust/src/bin/migrate.rs), [TypeScript](vector/ts/web3js-v3/src/migrate.ts) |
-| `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | next | planned |
+| `parallel` | several actions signed at once under one cold key, each on its own nonce account, landing in any order | next | planned |
 | `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | planned, with the Anza CLI | planned |
 
 Python and Go have no client on either side and are recorded as a gap, the way `transaction-v1/` records that Python has no gRPC example.
