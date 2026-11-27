@@ -5,6 +5,6 @@ Working examples for Solana network upgrades, in Rust, TypeScript, Python, and G
 | Upgrade | Examples | Docs |
 |---|---|---|
 | Transaction v1 (SIMD-0385) | [`transaction-v1/`](transaction-v1) | [Larger Transaction Sizes](https://solana.com/upgrades/larger-transaction-sizes) |
-| Durable nonce replacement | [`nonce-migration/`](nonce-migration), Anza and Vector backends, shipping incrementally | [Programmatic Signer](https://www.solana-program.com/docs/programmatic-signer), [Vector](https://github.com/blueshift-gg/vector) |
+| Durable nonce replacement | [`nonce-migration/`](nonce-migration), Anza and Vector backends | [Programmatic Signer](https://www.solana-program.com/docs/programmatic-signer), [Vector](https://github.com/blueshift-gg/vector) |
 
 Each directory is self-contained, with its own `Justfile` and README. Run `just` from inside it.

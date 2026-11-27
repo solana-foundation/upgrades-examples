@@ -109,6 +109,27 @@ cancel:
 ts-cancel:
     cd ts/kit && pnpm exec tsx src/cancel.ts
 
+# Move a cold key's SOL, tokens, mint authorities, and locked stake to its PDA in one checked transaction, then use them.
+migrate:
+    cd rust && cargo run --bin migrate
+
+ts-migrate:
+    cd ts/kit && pnpm exec tsx src/migrate.ts
+
+# Sign three actions at once, each over its own nonce account, and relay them out of order.
+parallel:
+    cd rust && cargo run --bin parallel
+
+ts-parallel:
+    cd ts/kit && pnpm exec tsx src/parallel.ts
+
+# Sign in a function that is given no network client, taking only the nonce from the online side.
+airgapped:
+    cd rust && cargo run --bin airgapped
+
+ts-airgapped:
+    cd ts/kit && pnpm exec tsx src/airgapped.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -128,3 +149,9 @@ _demo-inner:
     just ts-deadline
     just cancel
     just ts-cancel
+    just migrate
+    just ts-migrate
+    just parallel
+    just ts-parallel
+    just airgapped
+    just ts-airgapped

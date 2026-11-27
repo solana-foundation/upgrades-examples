@@ -2333,6 +2333,7 @@ version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19a89e4abe5053773609fb3653139dd485da0424016365206ea92e549580bbf"
 dependencies = [
+ "bincode",
  "serde",
  "serde_bytes",
  "serde_derive",
@@ -2340,6 +2341,7 @@ dependencies = [
  "solana-clock",
  "solana-instruction-error 3.1.0",
  "solana-pubkey 4.4.0",
+ "solana-sysvar",
  "wincode",
 ]
 
@@ -4303,6 +4305,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ed25519-dalek",
+ "solana-account",
  "solana-address 2.9.0",
  "solana-commitment-config",
  "solana-hash",
@@ -4317,6 +4320,7 @@ dependencies = [
  "solana-rpc-client-nonce-utils",
  "solana-signature",
  "solana-signer",
+ "solana-stake-interface",
  "solana-system-interface",
  "solana-transaction",
  "solana-transaction-error",
