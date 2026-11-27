@@ -44,6 +44,7 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
 | Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` |
 | Sign three actions at once, each over its own nonce account, and relay them out of order | `just parallel` | `just ts-parallel` |
+| Sign on a machine with no network: it receives what the online side prepared, shows it, and signs it | `just airgapped` | `just ts-airgapped` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -81,6 +82,8 @@ The five operations in the directory README are mostly calls into the official c
 The migration is "checked", which is how the upstream docs say to do it. It is a durable nonce transaction signed by the cold key, the last one it needs, and inside it is an authorization from the same key that lets the PDA sign. Both signatures are required: the stake program's `AuthorizeChecked` and `SetLockupChecked` want the new authority to sign, and so the migration fails, moving nothing, if the PDA cannot act. The example shows this first: the cold key sends the same handover on its own, without the PDA signing, and it is rejected with a missing signature.
 
 `parallel` signs three transfers in one session and relays them in a different order. A nonce account holds one nonce value, so actions signed over the same one land one after the other. Here each transfer names its own nonce account, all with the same PDA as authority, and each lands on its own.
+
+`airgapped` splits the flow into three steps: prepare online, review and sign offline, relay online. The online side builds the unsigned authorization message and hands its bytes to the cold machine. The offline step is a function that is not given a client, so it cannot make a network call. It decodes the bytes it received and prints the signers, the nonce account, the nonce, and the transfer with its amount, source, and destination. Then it signs those same bytes and hands back the 64-byte signature. The online side puts the signature and the message into a `Submit` instruction and relays it.
 
 ## The three layers
 
@@ -174,7 +177,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions; `parallel` requires all three transfers to land out of order with each nonce advanced. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions; `parallel` requires all three transfers to land out of order with each nonce advanced; `airgapped` requires the transfer signed offline to land. CI runs `just check` and `just demo`.
 
 ## Layout
 

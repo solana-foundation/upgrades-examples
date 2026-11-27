@@ -126,6 +126,13 @@ parallel:
 ts-parallel:
     cd ts/web3js-v3 && pnpm exec tsx src/parallel.ts
 
+# Sign in a function that is given no network client, taking only the nonce from the online side.
+airgapped:
+    cd rust && cargo run --bin airgapped
+
+ts-airgapped:
+    cd ts/web3js-v3 && pnpm exec tsx src/airgapped.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -149,3 +156,5 @@ _demo-inner:
     just ts-migrate
     just parallel
     just ts-parallel
+    just airgapped
+    just ts-airgapped

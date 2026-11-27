@@ -1543,6 +1543,7 @@ dependencies = [
  "lighthouse-sdk",
  "solana-account",
  "solana-address 2.9.0",
+ "solana-bincode",
  "solana-commitment-config",
  "solana-hash",
  "solana-instruction 4.0.0",
@@ -1570,6 +1571,7 @@ dependencies = [
  "spl-nonce-client",
  "spl-nonce-interface",
  "spl-token-interface",
+ "wincode",
 ]
 
 [[package]]

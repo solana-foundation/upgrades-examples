@@ -14,6 +14,9 @@ all = { level = "deny", priority = -1 }
 [dependencies]
 anyhow = "1"
 
+# The encoding v1 messages use. `airgapped` decodes a received message with it.
+wincode = "0.6.3"
+
 # The released Anza client and interface crates. scripts/setup-programs.sh
 # builds the programs from the commit they were released at.
 spl-ed25519-signer-client = "1.0.0"
@@ -41,6 +44,7 @@ lighthouse-sdk = "3.0.0"
 # The versions the pinned Anza workspace builds against, so one `Address` and
 # one `v1::Message` type flow through the client crates and this package.
 solana-address = { version = "2.9.0", features = ["atomic", "copy", "decode"] }
+solana-bincode = "4.0.0"
 solana-commitment-config = "3.1.1"
 solana-hash = "4.7.0"
 solana-instruction = "4.0.0"
