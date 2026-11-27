@@ -63,7 +63,7 @@ The five operations in the directory README are mostly calls into the official c
 
 `multi-signer` is two approvers on one withdrawal. Each cold key has its own PDA, and the 1,000 tokens belong to a Token program multisig whose two signers are those PDAs, so neither approver can move them alone. One authorization message names both cold keys; each signs the same bytes on its own machine, the second one first here, and the hot key puts the two signatures in the message's signer order. A relay with one signature is rejected with the Signer's `MissingSignature`; with both it lands, and both PDAs are promoted for the one `TransferChecked`. It costs about 132,000 compute units, and the authorization message is 760 bytes.
 
-`failed-attempt` shows the behaviour that differs most from a durable nonce. The cold key signs a transfer the PDA cannot afford; the relay fails and rolls back, nonce included, so the same signed bytes land once the PDA is funded. Then it signs a second transfer with a deadline 20 slots ahead, waits past it, and the relay is rejected with Lighthouse's `AssertionFailed` while the nonce stays where it was.
+`failed-attempt` shows the behaviour that differs most from a durable nonce. The cold key signs a transfer the PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same signed bytes then land once the PDA is funded. A durable nonce transaction that landed and failed would have used up its nonce. Then it signs a second transfer with a deadline 20 slots ahead, waits past it, and the relay is rejected with Lighthouse's `AssertionFailed` while the nonce stays where it was.
 
 ## The three layers
 

@@ -4,6 +4,7 @@ import {
     type Blockhash,
     Connection,
     Keypair,
+    type TransactionError,
     type TransactionInstruction,
     type TransactionSignature,
 } from '@solana/web3.js';
@@ -84,6 +85,34 @@ export async function sendTransaction(
     const signature = await connection.sendTransaction(transaction);
     await connection.confirmTransaction({ signature, ...latest });
     return signature;
+}
+
+/**
+ * Sends `instructions` like {@link sendTransaction}, but tells the RPC node
+ * not to simulate the transaction first, and returns how it ended on chain.
+ *
+ * An RPC node normally simulates a transaction and refuses to send one that
+ * would fail. Skipping that lets a failing transaction land, which is the
+ * only way to see what a failure leaves behind on chain. `err` is `null` if
+ * the transaction succeeded.
+ */
+export async function sendTransactionWithoutPreflight(
+    connection: Connection,
+    payer: Keypair,
+    instructions: TransactionInstruction[],
+    signers: Keypair[],
+): Promise<{ err: TransactionError | null; signature: TransactionSignature }> {
+    const latest = await connection.getLatestBlockhash();
+    const transaction = createV1Transaction({
+        feePayer: payer.publicKey,
+        instructions,
+        limits: LIMITS,
+        recentBlockhash: latest.blockhash,
+    });
+    await transaction.sign(signers);
+    const signature = await connection.sendTransaction(transaction, { skipPreflight: true });
+    const { value } = await connection.confirmTransaction({ signature, ...latest });
+    return { err: value.err, signature };
 }
 
 /**

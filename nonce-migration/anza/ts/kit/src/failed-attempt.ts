@@ -3,9 +3,10 @@
  * is what stops that.
  *
  * First the hazard. The cold key signs a transfer the PDA cannot afford. The
- * relay fails and rolls back completely, the nonce included, so the signed
- * authorization is still valid: once the PDA is funded, the same bytes land.
- * A durable nonce transaction would have burned its nonce on the first try.
+ * relay lands on chain and fails. A failed transaction is rolled back
+ * completely, and here that includes the nonce. So the signed authorization is
+ * still valid: once the PDA is funded, the same bytes land. A durable nonce
+ * transaction that landed and failed would have used up its nonce.
  *
  * Then the fix. The cold key signs a second transfer with a deadline, an
  * instruction that fails after a given slot. Relayed after that slot, it is
@@ -14,7 +15,7 @@
  * Run with `just ts-failed-attempt`.
  */
 
-import { findProgrammaticSignerPda } from '@solana-program/ed25519-programmatic-signer';
+import { findProgrammaticSignerPda, getSubmitInstruction } from '@solana-program/ed25519-programmatic-signer';
 import { getTransferSolInstruction, SYSTEM_ERROR__RESULT_WITH_NEGATIVE_LAMPORTS } from '@solana-program/system';
 import {
     createNoopSigner,
@@ -38,7 +39,7 @@ import {
     sysvarClockAssertion,
 } from 'lighthouse-sdk';
 
-import { assertProgramsDeployed, createFundedClient } from './lib/cluster';
+import { assertProgramsDeployed, createFundedClient, sendTransactionWithoutPreflight } from './lib/cluster';
 import { authorizationMessage, executionMessage } from './lib/signer';
 import { createNonceAccount, nextNonce } from './lib/spl-nonce';
 
@@ -77,21 +78,42 @@ const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 console.log(`  action:     transfer ${AMOUNT} lamports from the PDA`);
 console.log(`  next nonce: ${nextNonceValue}`);
 
-// The transfer fails inside the System program, and the whole relay rolls back
-// with it. The nonce is part of that: it has not moved.
-//
-// Here the RPC node catches the failure when it simulates the transaction,
-// before sending it. A transaction that failed on chain would end the same
-// way, with the nonce unchanged.
+// Relay it anyway. The RPC node is told not to simulate first, so the
+// transaction really lands. The transfer fails inside the System program, and
+// the whole transaction is rolled back with it.
 console.log('\n== relayed while the PDA is unfunded ==');
-await expectRejected(
-    authorization,
-    signature,
-    SYSTEM_ERROR__RESULT_WITH_NEGATIVE_LAMPORTS,
-    "the System program's insufficient funds error",
+const failed = await sendTransactionWithoutPreflight(
+    relayer,
+    getSubmitInstruction({ message: authorization, signatures: [signature] }),
 );
+console.log(`  landed:        ${failed.signature}`);
+// The outcome names the instruction that failed and its error. Here that is
+// custom error 1 from the System program.
+const [, instructionError] =
+    failed.err !== null && typeof failed.err === 'object' && 'InstructionError' in failed.err
+        ? failed.err.InstructionError
+        : [];
+if (
+    typeof instructionError !== 'object' ||
+    !('Custom' in instructionError) ||
+    Number(instructionError.Custom) !== SYSTEM_ERROR__RESULT_WITH_NEGATIVE_LAMPORTS
+) {
+    throw new Error('expected the transfer to fail for lack of funds');
+}
+console.log(
+    `  failed:        custom program error ${SYSTEM_ERROR__RESULT_WITH_NEGATIVE_LAMPORTS} (insufficient funds)`,
+);
+const failedTransaction = await relayer.rpc
+    .getTransaction(failed.signature, { commitment: 'confirmed', encoding: 'json', maxSupportedTransactionVersion: 1 })
+    .send();
+console.log(
+    `  compute units: ${failedTransaction?.meta?.computeUnitsConsumed} (the relayer paid the fee for this attempt)`,
+);
+// This is the difference from a durable nonce. A durable nonce transaction
+// that lands and fails still uses up its nonce. Here the nonce advance was
+// rolled back with everything else, so the nonce has not moved.
 const unchanged = await fetchNonce();
-console.log(`  nonce after: ${unchanged} (unchanged)`);
+console.log(`  nonce after:   ${unchanged} (unchanged)`);
 if (unchanged !== nonce) {
     throw new Error('the nonce moved although the relay failed');
 }

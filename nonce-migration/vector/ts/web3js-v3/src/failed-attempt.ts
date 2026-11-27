@@ -3,10 +3,10 @@
  * is what stops that.
  *
  * First the hazard. The cold key signs a transfer the system PDA cannot
- * afford. The relay fails and rolls back completely, the nonce included, so
- * the signature is still valid: once the PDA is funded, the same two
- * instructions land. A durable nonce transaction would have burned its nonce
- * on the first try.
+ * afford. The relay lands on chain and fails. A failed transaction is rolled
+ * back completely, and here that includes the nonce. So the signature is still
+ * valid: once the PDA is funded, the same two instructions land. A durable
+ * nonce transaction that landed and failed would have used up its nonce.
  *
  * Then the fix. The cold key signs a second transfer with a deadline, the
  * last slot the `Advance` instruction accepts. Relayed after that slot, it is
@@ -28,7 +28,13 @@ import {
     signAdvanceInstructionEd25519,
     VectorError,
 } from './client';
-import { assertProgramDeployed, connect, fundedKeypair, sendTransaction } from './lib/cluster';
+import {
+    assertProgramDeployed,
+    connect,
+    fundedKeypair,
+    sendTransaction,
+    sendTransactionWithoutPreflight,
+} from './lib/cluster';
 
 const AMOUNT = 10_000_000n;
 /**
@@ -76,16 +82,35 @@ const relay = [advance, passthrough];
 console.log(`  action:     transfer ${AMOUNT} lamports from the system PDA`);
 console.log(`  next nonce: ${nextNonceValue}`);
 
-// The transfer fails inside the System program, and the whole transaction
-// rolls back with it. The nonce is part of that: it has not moved.
-//
-// Here the RPC node catches the failure when it simulates the transaction,
-// before sending it. A transaction that failed on chain would end the same
-// way, with the nonce unchanged.
+// Relay it anyway. The RPC node is told not to simulate first, so the
+// transaction really lands. The transfer fails inside the System program, and
+// the whole transaction is rolled back with it.
 console.log('\n== relayed while the system PDA is unfunded ==');
-await expectRejected(relay, SYSTEM_ERROR_INSUFFICIENT_FUNDS, "the System program's insufficient funds error");
+const failed = await sendTransactionWithoutPreflight(connection, relayer, relay, [relayer]);
+console.log(`  landed:        ${failed.signature}`);
+// The outcome names the instruction that failed and its error. Here that is
+// custom error 1 from the System program.
+const [, instructionError] =
+    failed.err !== null && typeof failed.err === 'object' && 'InstructionError' in failed.err
+        ? failed.err.InstructionError
+        : [];
+if (
+    typeof instructionError !== 'object' ||
+    !('Custom' in instructionError) ||
+    Number(instructionError.Custom) !== SYSTEM_ERROR_INSUFFICIENT_FUNDS
+) {
+    throw new Error('expected the transfer to fail for lack of funds');
+}
+console.log(`  failed:        custom program error ${SYSTEM_ERROR_INSUFFICIENT_FUNDS} (insufficient funds)`);
+const failedTransaction = await connection.getTransaction(failed.signature, { maxSupportedTransactionVersion: 1 });
+console.log(
+    `  compute units: ${failedTransaction?.meta?.computeUnitsConsumed} (the relayer paid the fee for this attempt)`,
+);
+// This is the difference from a durable nonce. A durable nonce transaction
+// that lands and fails still uses up its nonce. Here the nonce advance was
+// rolled back with everything else, so the nonce has not moved.
 const unchanged = base58(await fetchNonce());
-console.log(`  nonce after: ${unchanged} (unchanged)`);
+console.log(`  nonce after:   ${unchanged} (unchanged)`);
 if (unchanged !== base58(nonce)) {
     throw new Error('the nonce moved although the relay failed');
 }

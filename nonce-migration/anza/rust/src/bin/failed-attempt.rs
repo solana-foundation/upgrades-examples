@@ -2,9 +2,10 @@
 //! is what stops that.
 //!
 //! First the hazard. The cold key signs a transfer the PDA cannot afford. The
-//! relay fails and rolls back completely, the nonce included, so the signed
-//! authorization is still valid: once the PDA is funded, the same bytes land.
-//! A durable nonce transaction would have burned its nonce on the first try.
+//! relay lands on chain and fails. A failed transaction is rolled back
+//! completely, and here that includes the nonce. So the signed authorization
+//! is still valid: once the PDA is funded, the same bytes land. A durable
+//! nonce transaction that landed and failed would have used up its nonce.
 //!
 //! Then the fix. The cold key signs a second transfer with a deadline, an
 //! instruction that fails after a given slot. Relayed after that slot, it is
@@ -16,7 +17,10 @@ use anyhow::{bail, Result};
 use lighthouse_sdk::errors::LighthouseError;
 use lighthouse_sdk::instructions::AssertSysvarClockBuilder;
 use lighthouse_sdk::types::{IntegerOperator, LogLevel, SysvarClockAssertion};
-use psigner::cluster::{assert_programs_deployed, client, funded_keypair, send_transaction};
+use psigner::cluster::{
+    assert_programs_deployed, client, compute_units, funded_keypair, send_transaction,
+    send_transaction_without_preflight,
+};
 use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_instruction_error::InstructionError;
@@ -70,20 +74,29 @@ fn main() -> Result<()> {
     println!("  action:     transfer {AMOUNT} lamports from the PDA");
     println!("  next nonce: {next_nonce_value}");
 
-    // The transfer fails inside the System program, and the whole relay rolls
-    // back with it. The nonce is part of that: it has not moved.
-    //
-    // Here the RPC node catches the failure when it simulates the transaction,
-    // before sending it. A transaction that failed on chain would end the same
-    // way, with the nonce unchanged.
+    // Relay it anyway. The RPC node is told not to simulate first, so the
+    // transaction really lands. The transfer fails inside the System program,
+    // and the whole transaction is rolled back with it.
     println!("\n== relayed while the PDA is unfunded ==");
-    expect_rejected(
-        send_transaction(&client, &relayer, &submit, &[&relayer]),
-        SystemError::ResultWithNegativeLamports as u32,
-        "the System program's insufficient funds error",
-    )?;
+    let (failed, outcome) =
+        send_transaction_without_preflight(&client, &relayer, &submit, &[&relayer])?;
+    println!("  landed:        {failed}");
+    match outcome {
+        Err(TransactionError::InstructionError(_, InstructionError::Custom(code)))
+            if code == SystemError::ResultWithNegativeLamports as u32 =>
+        {
+            println!("  failed:        custom program error {code} (insufficient funds)");
+        }
+        other => bail!("expected the transfer to fail for lack of funds, got {other:?}"),
+    }
+    if let Some(units) = compute_units(&client, &failed)? {
+        println!("  compute units: {units} (the relayer paid the fee for this attempt)");
+    }
+    // This is the difference from a durable nonce. A durable nonce transaction
+    // that lands and fails still uses up its nonce. Here the nonce advance was
+    // rolled back with everything else, so the nonce has not moved.
     let unchanged = fetch_nonce(&client, &nonce_account)?.nonce;
-    println!("  nonce after: {unchanged} (unchanged)");
+    println!("  nonce after:   {unchanged} (unchanged)");
     if unchanged != nonce {
         bail!("the nonce moved although the relay failed");
     }

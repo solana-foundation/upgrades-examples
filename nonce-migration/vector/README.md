@@ -67,7 +67,7 @@ The operations in the directory README are calls into the Vector SDK; the shared
 
 `multi-signer` is two approvers on one withdrawal. Each cold key has its own vector account and system PDA, and the 1,000 tokens belong to a Token program multisig whose two signers are those system PDAs, so neither approver can move them alone. The instructions are built once with both approvers listed; each then signs its own digest on its own machine, the second one first here, and the hot key puts both signatures into one `Advance`. A relay with one signature is rejected; with both it lands, and each account's nonce moves to the digest its approver signed. It costs about 32,000 compute units.
 
-`failed-attempt` shows the behaviour that differs most from a durable nonce. The cold key signs a transfer the system PDA cannot afford; the relay fails and rolls back, nonce included, so the same two instructions land once the PDA is funded. Then it signs a second transfer with a deadline 20 slots ahead, waits past it, and the relay is rejected with Vector's `Expired` while the nonce stays where it was.
+`failed-attempt` shows the behaviour that differs most from a durable nonce. The cold key signs a transfer the system PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same two instructions then land once the PDA is funded. A durable nonce transaction that landed and failed would have used up its nonce. Then it signs a second transfer with a deadline 20 slots ahead, waits past it, and the relay is rejected with Vector's `Expired` while the nonce stays where it was.
 
 ## The two instructions
 
