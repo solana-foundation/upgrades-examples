@@ -45,6 +45,7 @@ Vector has no release: no tags, nothing on crates.io or npm, and the program is 
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
 | Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its system PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` |
+| Sign three actions at once, each over its own nonce account, and relay them out of order | `just parallel` | `just ts-parallel` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/web3js-v3/src/`](ts/web3js-v3/src).
 
@@ -64,6 +65,7 @@ The operations in the directory README are calls into the Vector SDK; the shared
 | Sign with a deadline | `advance_message` with the last valid slot, `signer_digest`, `create_multi_advance_instruction` | `signAdvanceInstructionEd25519` with a trailing `validUntil` |
 | Cancel a signed action | `sign_revocation_instruction_ed25519`; `revocation_digest` is the nonce it leaves | `signRevocationInstructionEd25519`; `revocationDigest` is the nonce it leaves |
 | Migrate with both owners signing | a durable nonce transaction carrying `Advance` and `Passthrough`; sign the `Advance` with `AdvanceNonceAccount` as a pre-instruction and the cold key as fee payer | the same, with `signAdvanceInstructionEd25519` |
+| Keep several actions in flight | one nonce account per action: `create_initialize_nonce_instruction`, then sign with `AdvanceSigner { nonce_account }` over `signed_nonce` | one nonce account per action: `createInitializeNonceInstruction`, then sign with `{ nonceAccount }` over `signedNonce` |
 | Build the token instructions | `spl-token-interface`, `spl-associated-token-account-interface` | `@solana-program/token`, converted by `toTransactionInstructions` in `token.ts` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through Vector, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that what the cold key signed outlives one. Set `VECTOR_SKIP_EXPIRY=true` to skip the wait. Before the relay it sends the same signature with the amount doubled, and afterwards it sends the relay a second time; both must be rejected.
@@ -81,6 +83,8 @@ The operations in the directory README are calls into the Vector SDK; the shared
 `migrate` is the move itself. A cold key starts out holding SOL and tokens, being the mint and freeze authority of a mint, and being the staker, withdrawer, and lockup custodian of a stake account. One transaction hands all of it to the key's system PDA. Then the cold key signs one digest, and the PDA spends SOL, sends tokens, mints, freezes a token account, and withdraws from the locked stake. The migration costs 71,000 to 73,000 compute units and the follow-up about 46,000.
 
 The migration is "checked". It is a durable nonce transaction signed by the cold key, the last one it needs, and inside it is an `Advance` signed by the same key that lets the system PDA sign. Both signatures are required: the stake program's `AuthorizeChecked` and `SetLockupChecked` want the new authority to sign, and so the migration fails, moving nothing, if the PDA cannot act. The example shows this first: the cold key sends the same handover on its own, without the system PDA signing, and it is rejected with a missing signature.
+
+`parallel` signs three transfers in one session and relays them in a different order. A vector account holds one nonce value, so actions signed over it land one after the other. Here each transfer is signed over its own nonce account, a separate small account that holds a nonce of its own, and each lands on its own. The vector account's own nonce does not move.
 
 ## The two instructions
 
@@ -135,7 +139,7 @@ The next nonce is known before anything is sent because it is the digest the col
 
 **A lockup custodian is one more authority to move.** While a stake lockup is in force, changing the withdrawer or withdrawing needs the custodian's signature as well. `migrate` moves the withdrawer while the cold key is still custodian, then moves the custodian, in that order.
 
-**One vector account, one action in flight.** It holds one nonce, so a second signed action is valid only after the first lands. Vector's nonce accounts lift that; they are not used here yet.
+**One nonce, one action in flight.** A vector account holds one nonce, so a second action signed over it is valid only after the first lands. For actions that land independently, create nonce accounts and sign each action over a different one, as `parallel` does. A nonce account cannot be used in the slot it was created in. The nonce that goes into the digest is `signed_nonce`: a hash of the nonce account's nonce and the vector account's own nonce.
 
 **The system PDA pays rent, so keep it in SOL.** It is a System-owned address with lamports, so a `Passthrough` can carry `CreateAssociatedTokenAccountIdempotent` with the system PDA as payer, which is how `token-transfer` creates the recipient's account. A system PDA that holds only tokens cannot do that. The token accounts belong to the system PDA, not to the vector account.
 
@@ -181,7 +185,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions. CI runs `just check` and `just demo`.
+The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions; `parallel` requires all three transfers to land out of order with each nonce account advanced. CI runs `just check` and `just demo`.
 
 ## Layout
 
@@ -196,7 +200,7 @@ ts/web3js-v3/test/          offline tests
 scripts/                    validator, program build, and SDK vendoring
 ```
 
-Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other and `nonce-migration/anza`: `cluster` connects, funds keys, sends v1 transactions, and checks the program is deployed; `durable_nonce` (`durable-nonce` in TypeScript) is the durable nonce flow for comparison; `token` holds the token helpers the examples need, which in Rust includes the mint setup and in TypeScript the conversion of kit instructions; `vector`, in Rust only, reads the nonce, which the TypeScript SDK does itself.
+Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other and `nonce-migration/anza`: `cluster` connects, funds keys, sends v1 transactions, and checks the program is deployed; `durable_nonce` (`durable-nonce` in TypeScript) is the durable nonce flow for comparison; `token` holds the token helpers the examples need, which in Rust includes the mint setup and in TypeScript the conversion of kit instructions; `vector`, in Rust only, reads the nonce of a vector account and of a nonce account, which the TypeScript SDK does itself.
 
 ## Additional resources
 

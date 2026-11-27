@@ -85,6 +85,7 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` | yes | yes |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` | yes | yes |
 | Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` | yes | yes |
+| Sign three actions at once, each over its own nonce account, and relay them out of order | `just parallel` | `just ts-parallel` | yes | yes |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -101,8 +102,8 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `deadline` | an action signed with a deadline is rejected once that slot has passed | [Rust](anza/rust/src/bin/deadline.rs), [TypeScript](anza/ts/kit/src/deadline.ts) | [Rust](vector/rust/src/bin/deadline.rs), [TypeScript](vector/ts/web3js-v3/src/deadline.ts) |
 | `cancel` | sign an action, then cancel it by using up its nonce first | [Rust](anza/rust/src/bin/cancel.rs), [TypeScript](anza/ts/kit/src/cancel.ts) | [Rust](vector/rust/src/bin/cancel.rs), [TypeScript](vector/ts/web3js-v3/src/cancel.ts) |
 | `migrate` | move SOL, token balances, mint and freeze authority, and a locked stake account to the PDA in one checked transaction, then use them | [Rust](anza/rust/src/bin/migrate.rs), [TypeScript](anza/ts/kit/src/migrate.ts) | [Rust](vector/rust/src/bin/migrate.rs), [TypeScript](vector/ts/web3js-v3/src/migrate.ts) |
-| `parallel` | several actions signed at once under one cold key, each on its own nonce account, landing in any order | next | planned |
-| `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | planned, with the Anza CLI | planned |
+| `parallel` | several actions signed at once under one cold key, each on its own nonce account, landing in any order | [Rust](anza/rust/src/bin/parallel.rs), [TypeScript](anza/ts/kit/src/parallel.ts) | [Rust](vector/rust/src/bin/parallel.rs), [TypeScript](vector/ts/web3js-v3/src/parallel.ts) |
+| `airgapped`, `review` | signing across an air gap, and what an operator sees before signing | next | planned |
 
 Python and Go have no client on either side and are recorded as a gap, the way `transaction-v1/` records that Python has no gRPC example.
 

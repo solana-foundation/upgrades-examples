@@ -119,6 +119,13 @@ migrate:
 ts-migrate:
     cd ts/web3js-v3 && pnpm exec tsx src/migrate.ts
 
+# Sign three actions at once, each over its own nonce account, and relay them out of order.
+parallel:
+    cd rust && cargo run --bin parallel
+
+ts-parallel:
+    cd ts/web3js-v3 && pnpm exec tsx src/parallel.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -140,3 +147,5 @@ _demo-inner:
     just ts-cancel
     just migrate
     just ts-migrate
+    just parallel
+    just ts-parallel

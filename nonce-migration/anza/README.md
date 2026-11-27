@@ -43,6 +43,7 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
 | Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` |
+| Sign three actions at once, each over its own nonce account, and relay them out of order | `just parallel` | `just ts-parallel` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -61,6 +62,7 @@ The five operations in the directory README are mostly calls into the official c
 | Add a deadline | `lighthouse-sdk`'s `AssertSysvarClockBuilder` as the first instruction of the action | `lighthouse-sdk`'s `getAssertSysvarClockInstruction` as the first instruction of the action |
 | Cancel a signed action | `execution_message` with no instructions over the same nonce, signed and relayed like any action | `executionMessage` with an empty plan over the same nonce, signed and relayed like any action |
 | Migrate with both owners signing | a durable nonce transaction carrying `Submit`, with the cold key marked as a signer of it | the same, with `upgradeRoleToSigner` on the cold key's `Submit` account |
+| Keep several actions in flight | one nonce account per action, each made with `spl_nonce::create_nonce_account` | one nonce account per action, each made with `createNonceAccount` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
@@ -77,6 +79,8 @@ The five operations in the directory README are mostly calls into the official c
 `migrate` is the move itself. A cold key starts out holding SOL and tokens, being the mint and freeze authority of a mint, and being the staker, withdrawer, and lockup custodian of a stake account. One transaction hands all of it to the key's PDA. Then the cold key signs one authorization, and the PDA spends SOL, sends tokens, mints, freezes a token account, and withdraws from the locked stake. The migration costs 145,000 to 149,000 compute units and the follow-up about 120,000.
 
 The migration is "checked", which is how the upstream docs say to do it. It is a durable nonce transaction signed by the cold key, the last one it needs, and inside it is an authorization from the same key that lets the PDA sign. Both signatures are required: the stake program's `AuthorizeChecked` and `SetLockupChecked` want the new authority to sign, and so the migration fails, moving nothing, if the PDA cannot act. The example shows this first: the cold key sends the same handover on its own, without the PDA signing, and it is rejected with a missing signature.
+
+`parallel` signs three transfers in one session and relays them in a different order. A nonce account holds one nonce value, so actions signed over the same one land one after the other. Here each transfer names its own nonce account, all with the same PDA as authority, and each lands on its own.
 
 ## The three layers
 
@@ -170,7 +174,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions; `parallel` requires all three transfers to land out of order with each nonce advanced. CI runs `just check` and `just demo`.
 
 ## Layout
 
