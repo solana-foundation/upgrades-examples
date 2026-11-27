@@ -44,6 +44,7 @@ Vector has no release: no tags, nothing on crates.io or npm, and the program is 
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
+| Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its system PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/web3js-v3/src/`](ts/web3js-v3/src).
 
@@ -62,6 +63,7 @@ The operations in the directory README are calls into the Vector SDK; the shared
 | Sign with several approvers | `advance_message` once, `signer_digest` per approver, each signs `signed(&digest)`, then `create_multi_advance_instruction` and `create_multi_passthrough_instruction` | `advanceMessage` once, `signerDigest` and `signDigestEd25519` per approver, then `createMultiAdvanceInstruction` and `createMultiPassthroughInstruction` |
 | Sign with a deadline | `advance_message` with the last valid slot, `signer_digest`, `create_multi_advance_instruction` | `signAdvanceInstructionEd25519` with a trailing `validUntil` |
 | Cancel a signed action | `sign_revocation_instruction_ed25519`; `revocation_digest` is the nonce it leaves | `signRevocationInstructionEd25519`; `revocationDigest` is the nonce it leaves |
+| Migrate with both owners signing | a durable nonce transaction carrying `Advance` and `Passthrough`; sign the `Advance` with `AdvanceNonceAccount` as a pre-instruction and the cold key as fee payer | the same, with `signAdvanceInstructionEd25519` |
 | Build the token instructions | `spl-token-interface`, `spl-associated-token-account-interface` | `@solana-program/token`, converted by `toTransactionInstructions` in `token.ts` |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through Vector, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that what the cold key signed outlives one. Set `VECTOR_SKIP_EXPIRY=true` to skip the wait. Before the relay it sends the same signature with the amount doubled, and afterwards it sends the relay a second time; both must be rejected.
@@ -75,6 +77,10 @@ The operations in the directory README are calls into the Vector SDK; the shared
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Vector's `Expired`, no funds move, and the nonce is unchanged.
 
 `cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a revocation over the same nonce: an `Advance` with no other instruction. The hot key relays the revocation, which only advances the nonce. The transfer's signature then no longer verifies, so relaying it is rejected and the recipient's balance stays at zero.
+
+`migrate` is the move itself. A cold key starts out holding SOL and tokens, being the mint and freeze authority of a mint, and being the staker, withdrawer, and lockup custodian of a stake account. One transaction hands all of it to the key's system PDA. Then the cold key signs one digest, and the PDA spends SOL, sends tokens, mints, freezes a token account, and withdraws from the locked stake. The migration costs 71,000 to 73,000 compute units and the follow-up about 46,000.
+
+The migration is "checked". It is a durable nonce transaction signed by the cold key, the last one it needs, and inside it is an `Advance` signed by the same key that lets the system PDA sign. Both signatures are required: the stake program's `AuthorizeChecked` and `SetLockupChecked` want the new authority to sign, and so the migration fails, moving nothing, if the PDA cannot act. The example shows this first: the cold key sends the same handover on its own, without the system PDA signing, and it is rejected with a missing signature.
 
 ## The two instructions
 
@@ -123,6 +129,12 @@ The next nonce is known before anything is sent because it is the digest the col
 
 **A revocation has to be signed by the cold key too, and sent alone.** Nothing online can advance the nonce on its own. Cancelling means relaying `sign_revocation_instruction_ed25519`'s `Advance`, which needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. It was signed as the only instruction of its transaction, so it has to be relayed that way.
 
+**Everything goes to the system PDA, authorities included.** Both the vector account and its system PDA can sign through `Passthrough`, so either could be a stake or mint authority. `migrate` uses the system PDA for all of it. It already has to hold the SOL, because the vector account cannot be the source of a System transfer, and one address for funds and authorities is simpler to operate and to audit.
+
+**A Passthrough can carry another signer.** In the migration the instructions need two signers: the system PDA, which the program signs for, and the cold key itself as the current owner. The cold key signs the transaction, and `Passthrough` passes that on to the instructions inside. Because the cold key is the fee payer and also an account of those instructions, it has to be given as the fee payer when signing the `Advance`. `AdvanceNonceAccount` is given as the instruction that comes before it, since the digest covers every instruction in the transaction.
+
+**A lockup custodian is one more authority to move.** While a stake lockup is in force, changing the withdrawer or withdrawing needs the custodian's signature as well. `migrate` moves the withdrawer while the cold key is still custodian, then moves the custodian, in that order.
+
 **One vector account, one action in flight.** It holds one nonce, so a second signed action is valid only after the first lands. Vector's nonce accounts lift that; they are not used here yet.
 
 **The system PDA pays rent, so keep it in SOL.** It is a System-owned address with lamports, so a `Passthrough` can carry `CreateAssociatedTokenAccountIdempotent` with the system PDA as payer, which is how `token-transfer` creates the recipient's account. A system PDA that holds only tokens cannot do that. The token accounts belong to the system PDA, not to the vector account.
@@ -147,6 +159,7 @@ The next nonce is known before anything is sent because it is the digest the col
 | `@noble/curves`, `@noble/hashes` | 1.8.0, 1.7.0 | what the vendored SDK files import for Ed25519 and SHA-256 |
 | `spl-token-interface` | 3.0.0 | the version `nonce-migration/anza` uses; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the `createMint`, `mintToATA`, and `transferToATA` instruction plans |
+| `solana-stake-interface`, `@solana-program/stake` | 5.1.1, 0.11.0 | `migrate`: the crate builds the stake instructions in Rust; in TypeScript web3.js's own `StakeProgram` builds them and the kit client reads the account back |
 | `@solana/kit` | 8.6.0 | what `@solana-program/token` is written for and web3.js 3 is built on; `createNoopSigner` and `flattenInstructionPlan` |
 
 ## Configuration
@@ -168,7 +181,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, and `cancel` requires the cancelled action to be rejected with the funds unmoved. CI runs `just check` and `just demo`.
+The offline tests sign one fixed transfer in both languages and assert the same `Advance` data and the same next nonce; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/web3js-v3/test/wire.test.ts`](ts/web3js-v3/test/wire.test.ts) hold the same expected values. Unlike a compiled message, the digest does not depend on how a library orders accounts, so the two SDKs agree byte for byte and an action signed in one language relays from the other. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and a relay with the amount edited and a replay were both rejected; `multi-signer` requires the one-signature relay to be rejected and both nonces to advance, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` requires the handover without the new owner to be rejected, and checks every balance, every authority, and the lockup after each of its two transactions. CI runs `just check` and `just demo`.
 
 ## Layout
 
