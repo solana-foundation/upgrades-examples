@@ -2,7 +2,7 @@
 
 Working examples for the [programmatic signer](https://www.solana-program.com/docs/programmatic-signer), Anza's replacement for durable nonce transactions, in Rust and TypeScript: signing an action with a cold key that never goes online, relaying it later from a hot key, and reading back what happened.
 
-Every example runs against a local `solana-test-validator` from Anza CLI 4.4.1 with the three programs loaded, and the whole suite is exercised in CI. What changes from a durable nonce transaction, the five operations a migration consists of, and what is still to come are in the [directory README](../README.md); this one is the Anza specifics.
+Every example runs against a local `solana-test-validator` from Anza CLI 4.4.1 with the three programs and Lighthouse loaded, and the whole suite is exercised in CI. What changes from a durable nonce transaction, the five operations a migration consists of, and what is still to come are in the [directory README](../README.md); this one is the Anza specifics.
 
 ## Terms
 
@@ -25,7 +25,7 @@ just demo             # start a validator, run every example, shut it down
 To keep a validator up and drive the examples yourself:
 
 ```sh
-just validator-start  # local validator with the three programs loaded
+just validator-start  # local validator with the three programs and Lighthouse loaded
 just sign-relay       # …then any example below
 just validator-stop
 ```
@@ -39,6 +39,8 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject a replay | `just sign-relay` | `just ts-sign-relay` |
 | Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` |
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` |
+| A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
+| An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -54,12 +56,17 @@ The five operations in the directory README are mostly calls into the official c
 | Compute the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 | Sign with several approvers | `authorization_message` with every authority, each signs its bytes, then `submit` with one signature per signer | `authorizationMessage` with every authority, each `signBytes`, then `submit` with one signature per signer |
+| Add a deadline | `lighthouse-sdk`'s `AssertSysvarClockBuilder` as the first instruction of the action | `lighthouse-sdk`'s `getAssertSysvarClockInstruction` as the first instruction of the action |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
 `token-transfer` is the withdrawal most nonce users run: tokens, not SOL. The PDA holds 1,000 of a Token program mint, the kind USDC is. The cold key signs one action that creates the recipient's token account, with the PDA paying the rent, and moves 250 into it; the hot key relays it. It costs about 90,000 compute units against roughly 54,000 for a SOL transfer, most of it the account creation. It does not wait for a blockhash to expire; `sign-relay` already shows that.
 
 `multi-signer` is two approvers on one withdrawal. Each cold key has its own PDA, and the 1,000 tokens belong to a Token program multisig whose two signers are those PDAs, so neither approver can move them alone. One authorization message names both cold keys; each signs the same bytes on its own machine, the second one first here, and the hot key puts the two signatures in the message's signer order. A relay with one signature is rejected with the Signer's `MissingSignature`; with both it lands, and both PDAs are promoted for the one `TransferChecked`. It costs about 132,000 compute units, and the authorization message is 760 bytes.
+
+`failed-attempt` shows what a failed relay leaves behind. The cold key signs a transfer the PDA cannot afford. The relay is sent without simulation, so it lands on chain and fails; the relayer pays the fee, and the nonce is rolled back with everything else. The same signed bytes then land once the PDA is funded, with nothing signed again. A durable nonce transaction that landed and failed would have used up its nonce.
+
+`deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Lighthouse's `AssertionFailed`, no funds move, and the nonce is unchanged.
 
 ## The three layers
 
@@ -96,6 +103,8 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 **`Submit` takes signatures by position.** One slot per required signer of the authorization message, in the message's order, not the order the approvers signed in or were listed in. `multi-signer` reads the order back from the message. An empty slot is allowed only for a key that signs the relay transaction itself; otherwise the Signer returns `MissingSignature`.
 
+**There is no built-in deadline; add one with an instruction.** An authorization stays valid until its nonce advances, and a relay that fails does not advance it. The upstream docs say to put an instruction that fails after the deadline into the execution message, and name [Lighthouse](https://github.com/Jac0xb/lighthouse)'s `AssertSysvarClock`. Lighthouse is a third-party program with an immutable mainnet deployment, so the local validator loads a copy: the dump the pinned repo keeps as a test fixture. The instruction comes from `lighthouse-sdk`, in both languages. The deadline is a slot, not a time.
+
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 
 **Kit and Rust compile the same instructions into different bytes.** Both order a compiled message's accounts by privilege, but within a class `@solana/kit` sorts addresses as strings, with an English collator, and the Rust compiler sorts them as bytes. With one account per class, as in a SOL transfer's execution message, the two agree; the authorization message and a token transfer have several per class and they do not. Both messages are valid and the Executor runs either, but the signature and the next nonce differ, so a chain signed in one language has to be checked by decoding its instructions, not by recompiling them. The TypeScript wire tests compare decoded instructions, not bytes, for this reason.
@@ -122,6 +131,8 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | `@solana-program/system` | 0.16.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
 | `spl-token-interface` | 3.0.0 | the version the pinned Anza CLI builds `migrate token` with; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the Token program plugin; its `createMint`, `mintToATA`, and `transferToATA` instruction plans |
+| Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `deadline` uses |
+| `lighthouse-sdk` | 3.0.0 (crates.io and npm) | builds the Lighthouse instruction and names its error code |
 
 ## Configuration
 
@@ -142,7 +153,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, and `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged. CI runs `just check` and `just demo`.
 
 ## Layout
 

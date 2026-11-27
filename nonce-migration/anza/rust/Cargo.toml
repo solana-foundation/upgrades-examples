@@ -28,6 +28,10 @@ spl-nonce-interface = "2.0.0"
 spl-associated-token-account-interface = "2.0.0"
 spl-token-interface = "3.0.0"
 
+# The client for Lighthouse, the assertion program the `deadline` example uses to
+# give an authorization a deadline.
+lighthouse-sdk = "3.0.0"
+
 # The versions the pinned Anza workspace builds against, so one `Address` and
 # one `v1::Message` type flow through the client crates and this package.
 solana-address = { version = "2.9.0", features = ["atomic", "copy", "decode"] }

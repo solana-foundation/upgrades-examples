@@ -1258,6 +1258,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
+name = "leb128"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c83bff1d572d6b9aeef67ddfc8448e4a3737909cb28e81f97c791b9018703e52"
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,6 +1274,34 @@ name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
+name = "lighthouse-common"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d9710cd722a9ededb3f0f528bd43d27165fb5c2c620c6ef03475148be6ec487"
+dependencies = [
+ "borsh",
+ "leb128",
+]
+
+[[package]]
+name = "lighthouse-sdk"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa6145b881408112111ae4699b6ff86b84ad7a286574770ab6008604e867f55b"
+dependencies = [
+ "borsh",
+ "lighthouse-common",
+ "num-derive 0.4.2",
+ "num-traits",
+ "solana-account-info",
+ "solana-address 2.9.0",
+ "solana-cpi",
+ "solana-instruction 3.5.1",
+ "solana-program-error",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "litemap"
@@ -1506,6 +1540,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "lighthouse-sdk",
  "solana-address 2.9.0",
  "solana-commitment-config",
  "solana-hash",

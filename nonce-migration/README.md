@@ -48,7 +48,7 @@ Afterwards, old System nonce accounts can be closed with `WithdrawNonceAccount` 
 
 ## Before you move funds
 
-- **A failed action can be relayed again.** If the action fails, the whole relay rolls back, nonce included, and the same artifact lands later once conditions change. A durable nonce transaction burns its nonce on failure. The mitigation is a deadline: an instruction in the action on Anza, an expiry slot in the signature on Vector.
+- **A failed action can be relayed again.** If the action fails, the whole relay rolls back, nonce included, and the same artifact lands later once conditions change. A durable nonce transaction burns its nonce on failure. Nothing has to be signed again, and the action stays valid until its nonce moves. A deadline ends that earlier: an instruction in the action on Anza, for which its docs name the third-party Lighthouse program, and an expiry slot in the signature on Vector. `failed-attempt` shows the retry and `deadline` shows the deadline.
 - **The relayer chooses when, with which blockhash, from which fee payer, and with what compute budget.** It cannot change the action, the amount, the recipient, or the nonce without invalidating the signature. On Vector that extends to the whole transaction: the relayer cannot add an instruction to it.
 - **The programs are not released yet.** The Anza programs are on devnet only, under one upgrade key, unaudited. The JavaScript and Rust clients are published at 1.0.0; these examples build the programs from the commit the Rust crates were released at. Do not pre-sign against devnet addresses expecting them to hold. Vector has no release and no deployment at all; its examples pin one commit for the program and both SDKs.
 
@@ -81,6 +81,8 @@ Run from inside [`anza/`](anza) or [`vector/`](vector); the recipe names are the
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject a replay | `just sign-relay` | `just ts-sign-relay` | yes | yes |
 | Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` | yes | yes |
 | Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` | yes | yes |
+| A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` | yes | yes |
+| An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` | yes | yes |
 
 Source: [`anza/rust/src/bin/`](anza/rust/src/bin) and [`anza/ts/kit/src/`](anza/ts/kit/src); [`vector/rust/src/bin/`](vector/rust/src/bin) and [`vector/ts/web3js-v3/src/`](vector/ts/web3js-v3/src). Each backend's README describes its examples and what they print.
 
@@ -93,8 +95,9 @@ These examples ship incrementally. The table above lists what exists; this list 
 | `sign-relay` | the simplest cold-signed payment, before and after | shipped | shipped |
 | `token-transfer` | the same for a token balance, creating the recipient's account | shipped | shipped |
 | `multi-signer` | two cold approvers sign one action on different machines, in either order | shipped | shipped |
-| `failed-attempt` | a failed action keeps its nonce and lands later; the deadline that closes that | next | planned |
-| `cancel` | pre-sign an action, then kill it by consuming its nonce | planned | planned |
+| `failed-attempt` | a relay that lands and fails keeps its nonce, and the same signed action lands later | shipped | shipped |
+| `deadline` | an action signed with a deadline is rejected once that slot has passed | shipped | shipped |
+| `cancel` | pre-sign an action, then kill it by consuming its nonce | next | planned |
 | `migrate` | move SOL, token balances, stake and mint authorities to the PDA | planned, with the Anza CLI | planned, with ordinary transactions |
 | `retire-nonces` | inventory old System nonce accounts, prove a stale pre-signed transaction is dead, reclaim rent | planned | planned |
 | `parallel`, `nonce-housekeeping` | several nonce accounts under one PDA; create, show, advance, withdraw, close | planned | planned |

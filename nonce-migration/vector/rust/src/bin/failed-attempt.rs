@@ -1,0 +1,147 @@
+//! A cold-signed action that fails can be relayed again later.
+//!
+//! The cold key signs a transfer the system PDA cannot afford. The relay
+//! lands on chain and fails. A failed transaction is rolled back completely,
+//! and here that includes the nonce. So the signature is still valid: once the
+//! PDA is funded, the same two instructions land, with nothing signed again.
+//!
+//! A durable nonce transaction that landed and failed would have used up its
+//! nonce. To stop an action from staying valid, sign it with a deadline; see
+//! the `deadline` example.
+//!
+//! Run with `just failed-attempt`.
+
+use anyhow::{bail, Result};
+use ed25519_dalek::SigningKey;
+use solana_hash::Hash;
+use solana_instruction_error::InstructionError;
+use solana_keypair::Keypair;
+use solana_signer::Signer;
+use solana_system_interface::error::SystemError;
+use solana_system_interface::instruction as system_instruction;
+use solana_transaction_error::TransactionError;
+use vector_core::{
+    advance_vector_digest, create_initialize_ed25519, create_system_passthrough_instruction,
+    ed25519_pubkey, find_system_pda, find_vector_pda, sign_advance_instruction_ed25519, ED25519,
+};
+use vector_examples::cluster::{
+    assert_program_deployed, client, compute_units, funded_keypair, send_transaction,
+    send_transaction_without_preflight,
+};
+use vector_examples::vector::fetch_nonce;
+
+const AMOUNT: u64 = 10_000_000;
+fn main() -> Result<()> {
+    let client = client();
+    assert_program_deployed(&client)?;
+
+    let relayer = funded_keypair(&client, 2_000_000_000)?;
+    let recipient = Keypair::new().pubkey();
+    let signer = Keypair::new();
+    let signing_key = SigningKey::from_bytes(signer.secret_bytes());
+    let identity = ed25519_pubkey(&signing_key);
+    let (vector, _) = find_vector_pda(&ED25519, &identity);
+    let (system_pda, _) = find_system_pda(&vector);
+    send_transaction(
+        &client,
+        &relayer,
+        &[create_initialize_ed25519(&relayer.pubkey(), &identity)],
+        &[&relayer],
+    )?;
+    let nonce = fetch_nonce(&client, &vector)?;
+
+    println!("== setup: the system PDA holds nothing ==");
+    println!("  cold key:       {}", signer.pubkey());
+    println!("  vector account: {vector} (holds the nonce)");
+    println!("  system PDA:     {system_pda} (unfunded)");
+    println!("  nonce:          {nonce}");
+
+    // The cold key signs a transfer out of the system PDA. Signing needs no
+    // funds and no RPC, so nothing stops it from signing an action that cannot
+    // succeed yet. This signature has no expiry, which is the default.
+    println!("\n== signing on the cold side ==");
+    let transfer = system_instruction::transfer(&system_pda, &recipient, AMOUNT);
+    let passthrough = create_system_passthrough_instruction(&ED25519, &identity, &[transfer]);
+    let advance = sign_advance_instruction_ed25519(
+        &signing_key,
+        nonce.as_bytes(),
+        &[],
+        std::slice::from_ref(&passthrough),
+        None,
+    );
+    let next_nonce_value = Hash::new_from_array(advance_vector_digest(
+        &ED25519,
+        nonce.as_bytes(),
+        &identity,
+        &[],
+        std::slice::from_ref(&passthrough),
+        None,
+    ));
+    let relay = [advance, passthrough.clone()];
+    println!("  action:     transfer {AMOUNT} lamports from the system PDA");
+    println!("  next nonce: {next_nonce_value}");
+
+    // The system PDA holds no funds, so this transfer cannot succeed yet.
+    // Relay it anyway, to see what a failed attempt leaves behind.
+    //
+    // Normally the RPC node would simulate the transaction first, see that it
+    // fails, and refuse to send it. Here it is told not to simulate, so the
+    // transaction really lands. On chain, the transfer fails inside the System
+    // program, and the whole transaction is rolled back with it.
+    println!("\n== relayed while the system PDA is unfunded ==");
+    let (failed, outcome) =
+        send_transaction_without_preflight(&client, &relayer, &relay, &[&relayer])?;
+    println!("  landed:        {failed}");
+    match outcome {
+        Err(TransactionError::InstructionError(_, InstructionError::Custom(code)))
+            if code == SystemError::ResultWithNegativeLamports as u32 =>
+        {
+            println!("  failed:        custom program error {code} (insufficient funds)");
+        }
+        other => bail!("expected the transfer to fail for lack of funds, got {other:?}"),
+    }
+    if let Some(units) = compute_units(&client, &failed)? {
+        println!("  compute units: {units} (the relayer paid the fee for this attempt)");
+    }
+    // This is the difference from a durable nonce. A durable nonce transaction
+    // that lands and fails still uses up its nonce. Here the nonce advance was
+    // rolled back with everything else, so the nonce has not moved.
+    let unchanged = fetch_nonce(&client, &vector)?;
+    println!("  nonce after:   {unchanged} (unchanged)");
+    if unchanged != nonce {
+        bail!("the nonce moved although the relay failed");
+    }
+
+    // Now fund the system PDA and relay again. Nothing is signed again: these
+    // are the exact same two signed instructions that failed a moment ago.
+    //
+    // This time it lands. A failed attempt does not use up a signed action.
+    // The action stays valid until the nonce moves. So it can be retried
+    // without the cold key coming back online, and anyone who has a copy can
+    // relay it, at any later time.
+    println!("\n== relayed again after the system PDA is funded ==");
+    send_transaction(
+        &client,
+        &relayer,
+        &[system_instruction::transfer(
+            &relayer.pubkey(),
+            &system_pda,
+            1_000_000_000,
+        )],
+        &[&relayer],
+    )?;
+    let landed = send_transaction(&client, &relayer, &relay, &[&relayer])?;
+    println!("  landed:            {landed}");
+    let balance = client.get_balance(&recipient)?;
+    println!("  recipient balance: {balance} lamports");
+    if balance != AMOUNT {
+        bail!("expected the recipient to hold {AMOUNT} lamports");
+    }
+    let advanced = fetch_nonce(&client, &vector)?;
+    println!("  nonce after:       {advanced}");
+    println!("  expected:          {next_nonce_value}");
+    if advanced != next_nonce_value {
+        bail!("the nonce did not advance to the value computed at signing time");
+    }
+    Ok(())
+}

@@ -9,7 +9,24 @@ import {
 } from '@solana-program/ed25519-programmatic-signer';
 import { systemProgram } from '@solana-program/system';
 import { tokenProgram } from '@solana-program/token';
-import { type Blockhash, createClient, fetchEncodedAccount, lamports } from '@solana/kit';
+import {
+    appendTransactionMessageInstruction,
+    type Blockhash,
+    createClient,
+    createTransactionMessage,
+    fetchEncodedAccount,
+    getBase64EncodedWireTransaction,
+    getSignatureFromTransaction,
+    type Instruction,
+    lamports,
+    pipe,
+    setTransactionMessageConfig,
+    setTransactionMessageFeePayerSigner,
+    setTransactionMessageLifetimeUsingBlockhash,
+    type Signature,
+    signTransactionMessageWithSigners,
+    type TransactionError,
+} from '@solana/kit';
 import { solanaLocalRpc } from '@solana/kit-plugin-rpc';
 import { airdropSigner, generatedSigner } from '@solana/kit-plugin-signer';
 
@@ -67,6 +84,55 @@ export async function assertProgramsDeployed(rpc: Client['rpc']): Promise<void> 
                 `the ${name} program (${programAddress}) is not deployed on this cluster; start a validator with \`just validator-start\``,
             );
         }
+    }
+}
+
+/**
+ * Sends `instruction` in one v1 transaction paid by the client's payer, but
+ * tells the RPC node not to simulate it first, and returns how it ended on
+ * chain.
+ *
+ * An RPC node normally simulates a transaction and refuses to send one that
+ * would fail, and the client's own `sendTransaction` simulates as well.
+ * Skipping both lets a failing transaction land, which is the only way to see
+ * what a failure leaves behind on chain. The client cannot measure the
+ * resource limits without simulating, so they are stated here. `err` is
+ * `null` if the transaction succeeded.
+ */
+export async function sendTransactionWithoutPreflight(
+    client: Client,
+    instruction: Instruction,
+): Promise<{ err: TransactionError | null; signature: Signature }> {
+    const { value: latest } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send();
+    const transaction = await signTransactionMessageWithSigners(
+        pipe(
+            createTransactionMessage({ version: 1 }),
+            m => setTransactionMessageFeePayerSigner(client.payer, m),
+            m => setTransactionMessageLifetimeUsingBlockhash(latest, m),
+            m => appendTransactionMessageInstruction(instruction, m),
+            m =>
+                setTransactionMessageConfig(
+                    { computeUnitLimit: 200_000, loadedAccountsDataSizeLimit: 4 * 1024 * 1024 },
+                    m,
+                ),
+        ),
+    );
+    const signature = getSignatureFromTransaction(transaction);
+    await client.rpc
+        .sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: 'base64', skipPreflight: true })
+        .send();
+    // Wait until the cluster has processed it, one way or the other. A
+    // transaction can also be dropped without landing. Once its blockhash has
+    // expired it never will land, so stop waiting then.
+    for (;;) {
+        const [status] = (await client.rpc.getSignatureStatuses([signature]).send()).value;
+        if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
+            return { err: status.err, signature };
+        }
+        if ((await client.rpc.getBlockHeight({ commitment: 'confirmed' }).send()) > latest.lastValidBlockHeight) {
+            throw new Error(`transaction ${signature} was dropped: its blockhash expired before it landed`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 400));
     }
 }
 

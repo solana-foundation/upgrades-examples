@@ -4,6 +4,8 @@
 # The three programs are loaded at the addresses they hold on devnet, so the
 # clients' hard-coded program ids work unchanged. They are loaded as upgradeable
 # programs with no authority, which is how a release would eventually look.
+# Lighthouse, which the `deadline` example uses, is loaded at its
+# mainnet address.
 #
 # solana-test-validator activates every feature at genesis, so transaction v1 is
 # live from slot 0 and the relay transaction can be v1, as the Anza CLI sends it.
@@ -19,6 +21,7 @@ RPC_URL="http://127.0.0.1:8899"
 NONCE_PROGRAM="Noncediea1fH12usShuQAz28UhgAeuE5Maf32LsMUQB"
 SIGNER_PROGRAM="EdSigVfK1DkeMrjFNDMjwfQaJPhPTtX7jW8uPv3oKEgN"
 EXECUTOR_PROGRAM="ExecxgyHYsAXB4c5dZodV1zJZ9hqfsDCYkRDRATrpkFR"
+LIGHTHOUSE_PROGRAM="L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95"
 
 is_running() {
     solana --url "$RPC_URL" cluster-version > /dev/null 2>&1
@@ -48,6 +51,7 @@ start() {
         check_program "$NONCE_PROGRAM"
         check_program "$SIGNER_PROGRAM"
         check_program "$EXECUTOR_PROGRAM"
+        check_program "$LIGHTHOUSE_PROGRAM"
         return
     fi
 
@@ -59,6 +63,7 @@ start() {
         --upgradeable-program "$NONCE_PROGRAM" "$PROGRAMS/spl_nonce_program.so" none \
         --upgradeable-program "$SIGNER_PROGRAM" "$PROGRAMS/spl_ed25519_signer_program.so" none \
         --upgradeable-program "$EXECUTOR_PROGRAM" "$PROGRAMS/spl_message_executor_program.so" none \
+        --upgradeable-program "$LIGHTHOUSE_PROGRAM" "$PROGRAMS/lighthouse.so" none \
         > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
 

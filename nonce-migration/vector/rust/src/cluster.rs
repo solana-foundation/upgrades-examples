@@ -8,10 +8,11 @@ use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_message::{v1, VersionedMessage};
 use solana_rpc_client::rpc_client::RpcClient;
-use solana_rpc_client_api::config::RpcTransactionConfig;
+use solana_rpc_client_api::config::{RpcSendTransactionConfig, RpcTransactionConfig};
 use solana_signature::Signature;
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
+use solana_transaction_error::TransactionError;
 use solana_transaction_status_client_types::option_serializer::OptionSerializer;
 use solana_transaction_status_client_types::UiTransactionEncoding;
 use std::thread::sleep;
@@ -90,6 +91,49 @@ pub fn send_transaction(
     .context("failed to compile the transaction")?;
     let transaction = VersionedTransaction::try_new(VersionedMessage::V1(message), signers)?;
     Ok(client.send_and_confirm_transaction(&transaction)?)
+}
+
+/// Sends `instructions` like [`send_transaction`], but tells the RPC node not
+/// to simulate the transaction first, and returns how it ended on chain.
+///
+/// An RPC node normally simulates a transaction and refuses to send one that
+/// would fail. Skipping that lets a failing transaction land, which is the
+/// only way to see what a failure leaves behind on chain.
+pub fn send_transaction_without_preflight(
+    client: &RpcClient,
+    payer: &Keypair,
+    instructions: &[Instruction],
+    signers: &[&Keypair],
+) -> Result<(Signature, Result<(), TransactionError>)> {
+    let (blockhash, last_valid_block_height) =
+        client.get_latest_blockhash_with_commitment(client.commitment())?;
+    let message = v1::Message::try_compile_with_config(
+        &payer.pubkey(),
+        instructions,
+        blockhash,
+        TRANSACTION_CONFIG,
+    )
+    .context("failed to compile the transaction")?;
+    let transaction = VersionedTransaction::try_new(VersionedMessage::V1(message), signers)?;
+    let signature = client.send_transaction_with_config(
+        &transaction,
+        RpcSendTransactionConfig {
+            skip_preflight: true,
+            ..RpcSendTransactionConfig::default()
+        },
+    )?;
+    // Wait until the cluster has processed it, one way or the other. A
+    // transaction can also be dropped without landing. Once its blockhash has
+    // expired it never will land, so stop waiting then.
+    loop {
+        if let Some(outcome) = client.get_signature_status(&signature)? {
+            return Ok((signature, outcome));
+        }
+        if client.get_block_height()? > last_valid_block_height {
+            bail!("transaction {signature} was dropped: its blockhash expired before it landed");
+        }
+        sleep(Duration::from_millis(400));
+    }
 }
 
 /// Blocks until `blockhash` can no longer be used in a transaction.
