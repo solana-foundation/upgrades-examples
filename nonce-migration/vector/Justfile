@@ -84,6 +84,13 @@ token-transfer:
 ts-token-transfer:
     cd ts/web3js-v3 && pnpm exec tsx src/token-transfer.ts
 
+# Two cold approvers sign one token withdrawal separately; a relay with one signature is rejected, with both it lands.
+multi-signer:
+    cd rust && cargo run --bin multi-signer
+
+ts-multi-signer:
+    cd ts/web3js-v3 && pnpm exec tsx src/multi-signer.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -95,3 +102,5 @@ _demo-inner:
     just ts-sign-relay
     just token-transfer
     just ts-token-transfer
+    just multi-signer
+    just ts-multi-signer

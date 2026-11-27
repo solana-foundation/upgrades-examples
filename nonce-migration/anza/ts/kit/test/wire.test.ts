@@ -35,6 +35,11 @@ const EXPECTED_EXECUTION_MESSAGE =
     'gQEAAQAAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEDuClYJxaE8PfFX0Fxd3EtIhv5ZXrMsG//+NmM+H1hj3YCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgIMAAABAgAAAICWmAAAAAAA';
 const EXPECTED_AUTHORIZATION_MESSAGE =
     'gQEABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEI6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iwDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA7gpWCcWhPD3xV9BcXdxLSIb+WV6zLBv//jZjPh9YY92AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgLPaWlfj5JYuK1SNOpr++SvWDuDtHoo2hDLZ0DIYFQcOAWWGT5rG9fLwDcrw+nggq710Pl+QXhA8DKWM9aBvVZsy/dBGfmAqhXLmy1s8ZgUf7C7Mf6E2VM3yGC6u0UgpYcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQHnQACAQUGAgMHAIEBAAEAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQBA7gpWCcWhPD3xV9BcXdxLSIb+WV6zLBv//jZjPh9YY92AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICDAAAAQIAAACAlpgAAAAAAA==';
+// The same authorization with a second authority, whose secret key is 32 bytes
+// of 8, added as a signer.
+const SECOND_AUTHORITY_SEED = new Uint8Array(32).fill(8);
+const EXPECTED_TWO_AUTHORITY_MESSAGE =
+    'gQIBBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEJ6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iwTmPYsbRpFfFG6aktfPb0vafypMhYhjciZfkFr0X2TygMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDuClYJxaE8PfFX0Fxd3EtIhv5ZXrMsG//+NmM+H1hj3YCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAs9paV+Pkli4rVI06mv75K9YO4O0eijaEMtnQMhgVBw4BZYZPmsb18vANyvD6eCCrvXQ+X5BeEDwMpYz1oG9VmzL90EZ+YCqFcubLWzxmBR/sLsx/oTZUzfIYLq7RSClhwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQedAAMCBgcDBAgAgQEAAQAAAAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAEDuClYJxaE8PfFX0Fxd3EtIhv5ZXrMsG//+NmM+H1hj3YCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgIMAAABAgAAAICWmAAAAAAA';
 const EXPECTED_NEXT_NONCE = 'SewSJdKpN41PPGEVRoSTvX6kEW2JSGoZbd9iPxtzf94';
 
 async function fixture() {
@@ -47,8 +52,19 @@ async function fixture() {
         source: createNoopSigner(pda),
     });
     const execution = executionMessage(pda, singleInstructionPlan(transfer), NONCE);
-    const authorization = authorizationMessage(execution, NONCE_ACCOUNT, pda, authority);
-    return { authorization, execution };
+    const authorization = authorizationMessage(execution, NONCE_ACCOUNT, pda, [authority]);
+    const second = await getAddressFromPublicKey(
+        (await createKeyPairFromPrivateKeyBytes(SECOND_AUTHORITY_SEED)).publicKey,
+    );
+    const twoAuthority = authorizationMessage(execution, NONCE_ACCOUNT, pda, [authority, second]);
+    return { authorization, execution, twoAuthority };
+}
+
+/** The required signers of a compiled message, in order. */
+function signersOf(message: ReadonlyUint8Array) {
+    const decoded = getCompiledTransactionMessageDecoder().decode(message);
+    if (decoded.version !== 1) throw new Error('expected a v1 message');
+    return decoded.staticAccounts.slice(0, decoded.header.numSignerAccounts);
 }
 
 /**
@@ -89,6 +105,14 @@ describe('against the Anza client crates', () => {
         const theirs = getBase64Encoder().encode(EXPECTED_AUTHORIZATION_MESSAGE);
         expect(instructionsOf(authorization)).toEqual(instructionsOf(theirs));
         expect(authorization.length).toBe(theirs.length);
+    });
+
+    it('the authorization message for two authorities names the same signers and instruction', async () => {
+        const { twoAuthority } = await fixture();
+        const theirs = getBase64Encoder().encode(EXPECTED_TWO_AUTHORITY_MESSAGE);
+        expect(signersOf(twoAuthority)).toEqual(signersOf(theirs));
+        expect(instructionsOf(twoAuthority)).toEqual(instructionsOf(theirs));
+        expect(twoAuthority.length).toBe(theirs.length);
     });
 
     it('the next nonce matches', async () => {

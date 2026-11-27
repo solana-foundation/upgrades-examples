@@ -94,7 +94,7 @@ console.log('\n== signing on the cold side ==');
 // PDA, which has no key, so use a noop signer.
 const transfer = getTransferSolInstruction({ amount: AMOUNT, destination: recipient, source: createNoopSigner(pda) });
 const execution = executionMessage(pda, singleInstructionPlan(transfer), nonce);
-const authorization = authorizationMessage(execution, nonceAccount, pda, authority.address);
+const authorization = authorizationMessage(execution, nonceAccount, pda, [authority.address]);
 const signature = await signBytes(authority.keyPair.privateKey, authorization);
 const nextNonceValue = await nextNonce(nonceAccount, nonce, execution);
 const decodedAuthorization = getCompiledTransactionMessageDecoder().decode(authorization);
@@ -129,12 +129,9 @@ const edited = getTransferSolInstruction({
     source: createNoopSigner(pda),
 });
 await expectRejected(
-    authorizationMessage(
-        executionMessage(pda, singleInstructionPlan(edited), nonce),
-        nonceAccount,
-        pda,
+    authorizationMessage(executionMessage(pda, singleInstructionPlan(edited), nonce), nonceAccount, pda, [
         authority.address,
-    ),
+    ]),
     ED25519_SIGNER_ERROR__INVALID_SIGNATURE,
     "the Signer's InvalidSignature",
 );

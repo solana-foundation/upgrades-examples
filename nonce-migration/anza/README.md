@@ -38,6 +38,7 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 |---|---|---|
 | Sign a SOL transfer with a cold key, relay it after the signing-time blockhash expires, reject a replay | `just sign-relay` | `just ts-sign-relay` |
 | Sign a token withdrawal with a cold key, creating the recipient's token account on the way, and relay it from a hot key | `just token-transfer` | `just ts-token-transfer` |
+| Two cold approvers sign one token withdrawal on separate machines; a relay with one signature is rejected, with both it lands | `just multi-signer` | `just ts-multi-signer` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -52,10 +53,13 @@ The five operations in the directory README are mostly calls into the official c
 | Sign on the cold side | `execute`, then `sign_and_submit` | `authorizationMessage` in `signer.ts`, then `signBytes` |
 | Compute the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
+| Sign with several approvers | `authorization_message` with every authority, each signs its bytes, then `submit` with one signature per signer | `authorizationMessage` with every authority, each `signBytes`, then `submit` with one signature per signer |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
 `token-transfer` is the withdrawal most nonce users run: tokens, not SOL. The PDA holds 1,000 of a Token program mint, the kind USDC is. The cold key signs one action that creates the recipient's token account, with the PDA paying the rent, and moves 250 into it; the hot key relays it. It costs about 90,000 compute units against roughly 54,000 for a SOL transfer, most of it the account creation. It does not wait for a blockhash to expire; `sign-relay` already shows that.
+
+`multi-signer` is two approvers on one withdrawal. Each cold key has its own PDA, and the 1,000 tokens belong to a Token program multisig whose two signers are those PDAs, so neither approver can move them alone. One authorization message names both cold keys; each signs the same bytes on its own machine, the second one first here, and the hot key puts the two signatures in the message's signer order. A relay with one signature is rejected with the Signer's `MissingSignature`; with both it lands, and both PDAs are promoted for the one `TransferChecked`. It costs about 132,000 compute units, and the authorization message is 760 bytes.
 
 ## The three layers
 
@@ -86,7 +90,11 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 **The execution message must carry no transaction config.** The Executor rejects one that sets a compute unit limit or a priority fee, since those only mean something on a top-level transaction. Set the budget on the relay transaction instead. The Anza CLI strips a config it is handed; these examples never set one.
 
-**Unset v1 limits are zero.** The relay transaction is v1, so its compute unit limit and loaded-accounts limit have to be stated. The TypeScript client measures both by simulating before it sends, as the Anza CLI does; the Rust examples request 200,000 compute units and 4 MB. A SOL transfer uses about 54,000 compute units and loads about 280 KB.
+**Unset v1 limits are zero.** The relay transaction is v1, so its compute unit limit and loaded-accounts limit have to be stated. The TypeScript client measures both by simulating before it sends, as the Anza CLI does; the Rust examples request 200,000 compute units and 4 MB. A SOL transfer uses about 54,000 compute units and loads about 280 KB; the two-approver withdrawal in `multi-signer` uses about 132,000.
+
+**Each authority has its own PDA; there is no shared one.** A PDA is derived from a single cold key. Two approvers are two PDAs, and an action needs both only if something it touches requires both to sign, such as the Token multisig in `multi-signer`. A plain transfer out of one PDA never needs the other.
+
+**`Submit` takes signatures by position.** One slot per required signer of the authorization message, in the message's order, not the order the approvers signed in or were listed in. `multi-signer` reads the order back from the message. An empty slot is allowed only for a key that signs the relay transaction itself; otherwise the Signer returns `MissingSignature`.
 
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 
@@ -134,7 +142,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected. CI runs `just check` and `just demo`.
 
 ## Layout
 
