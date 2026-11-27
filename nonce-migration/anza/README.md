@@ -55,7 +55,7 @@ The five operations in the directory README are mostly calls into the official c
 | Compute the next nonce | `spl_nonce::next_nonce` | `nextNonce` in `spl-nonce.ts` |
 | Relay on the hot side | send the `Submit` instruction | `client.ed25519Signer.instructions.submit(...)` |
 | Sign with several approvers | `authorization_message` with every authority, each signs its bytes, then `submit` with one signature per signer | `authorizationMessage` with every authority, each `signBytes`, then `submit` with one signature per signer |
-| Add a deadline | `lighthouse::assert_slot_at_most` as the first instruction of the action | `assertSlotAtMost` in `lighthouse.ts` as the first instruction of the action |
+| Add a deadline | `lighthouse-sdk`'s `AssertSysvarClockBuilder` as the first instruction of the action | `lighthouse-sdk`'s `getAssertSysvarClockInstruction` as the first instruction of the action |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
@@ -100,7 +100,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 **`Submit` takes signatures by position.** One slot per required signer of the authorization message, in the message's order, not the order the approvers signed in or were listed in. `multi-signer` reads the order back from the message. An empty slot is allowed only for a key that signs the relay transaction itself; otherwise the Signer returns `MissingSignature`.
 
-**There is no built-in deadline; add one with an instruction.** An authorization stays valid until its nonce advances, and a relay that fails does not advance it. The upstream docs say to put an instruction that fails after the deadline into the execution message, and name [Lighthouse](https://github.com/Jac0xb/lighthouse)'s `AssertSysvarClock`. Lighthouse is a third-party program with an immutable mainnet deployment, so the local validator loads a copy: the dump the pinned repo keeps as a test fixture. Its published SDKs target older Solana libraries, so [`rust/src/lighthouse.rs`](rust/src/lighthouse.rs) and [`ts/kit/src/lib/lighthouse.ts`](ts/kit/src/lib/lighthouse.ts) build the one 12-byte instruction by hand, as upstream's own CLI test does. The deadline is a slot, not a time.
+**There is no built-in deadline; add one with an instruction.** An authorization stays valid until its nonce advances, and a relay that fails does not advance it. The upstream docs say to put an instruction that fails after the deadline into the execution message, and name [Lighthouse](https://github.com/Jac0xb/lighthouse)'s `AssertSysvarClock`. Lighthouse is a third-party program with an immutable mainnet deployment, so the local validator loads a copy: the dump the pinned repo keeps as a test fixture. The instruction comes from `lighthouse-sdk`, in both languages. The deadline is a slot, not a time.
 
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 
@@ -128,7 +128,8 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | `@solana-program/system` | 0.16.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
 | `spl-token-interface` | 3.0.0 | the version the pinned Anza CLI builds `migrate token` with; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the Token program plugin; its `createMint`, `mintToATA`, and `transferToATA` instruction plans |
-| Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `failed-attempt` uses for a deadline; no SDK, the instruction is built by hand |
+| Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `failed-attempt` uses for a deadline |
+| `lighthouse-sdk` | 3.0.0 (crates.io and npm) | builds the Lighthouse instruction and names its error code |
 
 ## Configuration
 
@@ -163,7 +164,7 @@ ts/kit/test/          offline tests
 scripts/              validator and program build
 ```
 
-Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other: `cluster` connects with a funded key and checks the programs are deployed; `spl_nonce` (`spl-nonce` in TypeScript) creates SPL nonce accounts and computes the next value; `signer` builds the execution message, and in TypeScript the authorization message; `token` holds the token helpers the examples need, which in Rust includes the mint setup and the PDA's withdrawal; `lighthouse` builds the deadline instruction; `durable_nonce` (`durable-nonce`) is the durable nonce flow for comparison.
+Runnable examples are separate from the code they share. A file directly under `src/bin/` or `src/` is an entry point: it runs top to bottom and has a `just` recipe. The library modules mirror each other: `cluster` connects with a funded key and checks the programs are deployed; `spl_nonce` (`spl-nonce` in TypeScript) creates SPL nonce accounts and computes the next value; `signer` builds the execution message, and in TypeScript the authorization message; `token` holds the token helpers the examples need, which in Rust includes the mint setup and the PDA's withdrawal; `durable_nonce` (`durable-nonce`) is the durable nonce flow for comparison.
 
 ## Additional resources
 

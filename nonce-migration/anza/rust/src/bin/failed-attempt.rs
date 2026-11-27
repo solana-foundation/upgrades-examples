@@ -13,8 +13,10 @@
 //! Run with `just failed-attempt`.
 
 use anyhow::{bail, Result};
+use lighthouse_sdk::errors::LighthouseError;
+use lighthouse_sdk::instructions::AssertSysvarClockBuilder;
+use lighthouse_sdk::types::{IntegerOperator, LogLevel, SysvarClockAssertion};
 use psigner::cluster::{assert_programs_deployed, client, funded_keypair, send_transaction};
-use psigner::lighthouse;
 use psigner::signer::execution_message;
 use psigner::spl_nonce::{create_nonce_account, fetch_nonce, next_nonce};
 use solana_instruction_error::InstructionError;
@@ -109,8 +111,11 @@ fn main() -> Result<()> {
         bail!("the nonce did not advance to the value computed at signing time");
     }
 
-    // The fix. The second action starts with a Lighthouse instruction that
-    // fails once the slot is past the deadline. It is inside the execution
+    // The fix. The programmatic signer has no deadline of its own. The
+    // upstream docs say to add one with an instruction that fails after the
+    // deadline, and name Lighthouse, a separate assertion program, for it.
+    // So the second action starts with a Lighthouse instruction that checks
+    // "the current slot is at most the deadline". It is inside the execution
     // message, so the cold key's signature covers it and a relayer cannot
     // remove or change it.
     println!("\n== signing a second action with a deadline ==");
@@ -118,7 +123,13 @@ fn main() -> Result<()> {
     let execution = execution_message(
         &pda,
         &[
-            lighthouse::assert_slot_at_most(deadline),
+            AssertSysvarClockBuilder::new()
+                .log_level(LogLevel::Silent)
+                .assertion(SysvarClockAssertion::Slot {
+                    value: deadline,
+                    operator: IntegerOperator::LessThanOrEqual,
+                })
+                .instruction(),
             system_instruction::transfer(&pda, &recipient, AMOUNT),
         ],
         advanced,
@@ -139,7 +150,7 @@ fn main() -> Result<()> {
     println!("  slot:        {}", client.get_slot()?);
     expect_rejected(
         send_transaction(&client, &relayer, &submit, &[&relayer]),
-        lighthouse::ASSERTION_FAILED,
+        LighthouseError::AssertionFailed as u32,
         "Lighthouse's AssertionFailed",
     )?;
     let balance = client.get_balance(&recipient)?;

@@ -8,7 +8,6 @@
 
 pub mod cluster;
 pub mod durable_nonce;
-pub mod lighthouse;
 pub mod signer;
 pub mod spl_nonce;
 pub mod token;

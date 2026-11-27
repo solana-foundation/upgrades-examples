@@ -30,9 +30,15 @@ import {
     SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM,
     unwrapSimulationError,
 } from '@solana/kit';
+import {
+    getAssertSysvarClockInstruction,
+    IntegerOperator,
+    LIGHTHOUSE_ERROR__ASSERTION_FAILED,
+    LogLevel,
+    sysvarClockAssertion,
+} from 'lighthouse-sdk';
 
 import { assertProgramsDeployed, createFundedClient } from './lib/cluster';
-import { assertSlotAtMost, LIGHTHOUSE_ERROR__ASSERTION_FAILED } from './lib/lighthouse';
 import { authorizationMessage, executionMessage } from './lib/signer';
 import { createNonceAccount, nextNonce } from './lib/spl-nonce';
 
@@ -105,14 +111,23 @@ if (advanced !== nextNonceValue) {
     throw new Error('the nonce did not advance to the value computed at signing time');
 }
 
-// The fix. The second action starts with a Lighthouse instruction that fails
-// once the slot is past the deadline. It is inside the execution message, so
-// the cold key's signature covers it and a relayer cannot remove or change it.
+// The fix. The programmatic signer has no deadline of its own. The upstream
+// docs say to add one with an instruction that fails after the deadline, and
+// name Lighthouse, a separate assertion program, for it. So the second action
+// starts with a Lighthouse instruction that checks "the current slot is at
+// most the deadline". It is inside the execution message, so the cold key's
+// signature covers it and a relayer cannot remove or change it.
 console.log('\n== signing a second action with a deadline ==');
 const deadline = (await fetchSlot()) + DEADLINE_SLOTS;
 const timedExecution = executionMessage(
     pda,
-    sequentialInstructionPlan([assertSlotAtMost(deadline), transfer]),
+    sequentialInstructionPlan([
+        getAssertSysvarClockInstruction({
+            assertion: sysvarClockAssertion('Slot', { operator: IntegerOperator.LessThanOrEqual, value: deadline }),
+            logLevel: LogLevel.Silent,
+        }),
+        transfer,
+    ]),
     advanced,
 );
 const timedAuthorization = authorizationMessage(timedExecution, nonceAccount, pda, [authority.address]);
