@@ -112,6 +112,13 @@ cancel:
 ts-cancel:
     cd ts/web3js-v3 && pnpm exec tsx src/cancel.ts
 
+# Move a cold key's SOL, tokens, mint authorities, and locked stake to its system PDA in one checked transaction, then use them.
+migrate:
+    cd rust && cargo run --bin migrate
+
+ts-migrate:
+    cd ts/web3js-v3 && pnpm exec tsx src/migrate.ts
+
 # Run every example end to end against a fresh validator.
 demo:
     just validator-start
@@ -131,3 +138,5 @@ _demo-inner:
     just ts-deadline
     just cancel
     just ts-cancel
+    just migrate
+    just ts-migrate

@@ -42,6 +42,7 @@ The examples use the released clients: [`@solana-program/ed25519-programmatic-si
 | A relay that lands and fails keeps its nonce, and the same signed action lands later | `just failed-attempt` | `just ts-failed-attempt` |
 | An action signed with a deadline is rejected once that slot has passed | `just deadline` | `just ts-deadline` |
 | Cancel a signed action by landing another one over the same nonce; the cancelled action is then rejected | `just cancel` | `just ts-cancel` |
+| Move a cold key's SOL, tokens, mint and freeze authority, and locked stake to its PDA in one checked transaction, then use each of them | `just migrate` | `just ts-migrate` |
 
 Source: [`rust/src/bin/`](rust/src/bin) and [`ts/kit/src/`](ts/kit/src).
 
@@ -59,6 +60,7 @@ The five operations in the directory README are mostly calls into the official c
 | Sign with several approvers | `authorization_message` with every authority, each signs its bytes, then `submit` with one signature per signer | `authorizationMessage` with every authority, each `signBytes`, then `submit` with one signature per signer |
 | Add a deadline | `lighthouse-sdk`'s `AssertSysvarClockBuilder` as the first instruction of the action | `lighthouse-sdk`'s `getAssertSysvarClockInstruction` as the first instruction of the action |
 | Cancel a signed action | `execution_message` with no instructions over the same nonce, signed and relayed like any action | `executionMessage` with an empty plan over the same nonce, signed and relayed like any action |
+| Migrate with both owners signing | a durable nonce transaction carrying `Submit`, with the cold key marked as a signer of it | the same, with `upgradeRoleToSigner` on the cold key's `Submit` account |
 
 `sign-relay` sends the same transfer twice: first as a durable nonce transaction, then through the programmatic signer, printing what it builds as it goes. Between signing and relaying it waits for a blockhash captured at signing time to expire (150 slots), which is the shortest proof that the signed authorization outlives one. It then relays the authorization with the amount edited, which the Signer refuses, before relaying the real one and replaying it, which the Executor refuses. Set `PSIGNER_SKIP_EXPIRY=true` to skip the wait.
 
@@ -71,6 +73,10 @@ The five operations in the directory README are mostly calls into the official c
 `deadline` signs a transfer that is valid for 20 slots. The example waits past the deadline and relays. The relay is rejected with Lighthouse's `AssertionFailed`, no funds move, and the nonce is unchanged.
 
 `cancel` cancels an action that has already been signed. The cold key signs a transfer and, in the same session, a cancellation over the same nonce: an authorization whose execution message has no instructions. The hot key relays the cancellation, which only advances the nonce. The transfer is then rejected with the Executor's `NonceMismatch`, and the recipient's balance stays at zero.
+
+`migrate` is the move itself. A cold key starts out holding SOL and tokens, being the mint and freeze authority of a mint, and being the staker, withdrawer, and lockup custodian of a stake account. One transaction hands all of it to the key's PDA. Then the cold key signs one authorization, and the PDA spends SOL, sends tokens, mints, freezes a token account, and withdraws from the locked stake. The migration costs 145,000 to 149,000 compute units and the follow-up about 120,000.
+
+The migration is "checked", which is how the upstream docs say to do it. It is a durable nonce transaction signed by the cold key, the last one it needs, and inside it is an authorization from the same key that lets the PDA sign. Both signatures are required: the stake program's `AuthorizeChecked` and `SetLockupChecked` want the new authority to sign, and so the migration fails, moving nothing, if the PDA cannot act.
 
 ## The three layers
 
@@ -111,6 +117,10 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 
 **A cancellation has to be signed by the cold key too.** The nonce account's authority is the PDA, so nothing online can advance the nonce on its own. Cancelling means relaying a second authorization over the same nonce, and that one needs the cold key's signature. If it is signed in the same session as the action, the cold key does not have to come back online to cancel. The Anza CLI's `nonce advance` builds the same empty execution message, and adds a random account to it so the next nonce value cannot be worked out in advance; the example leaves that out.
 
+**The old owner signs the transaction; mark it on `Submit`.** In a migration the instructions need two signers: the PDA, which the Signer program promotes, and the cold key itself as the current owner. The cold key signs the relay transaction, and that signature reaches the instructions only if its account is marked as a signer on the `Submit` instruction. The client builders leave every `Submit` account unsigned, so `migrate` sets the flag after building it. The Anza CLI calls these "forwarded signers".
+
+**A lockup custodian is one more authority to move.** While a stake lockup is in force, changing the withdrawer or withdrawing needs the custodian's signature as well. `migrate` moves the withdrawer while the cold key is still custodian, then moves the custodian, in that order. Afterwards the PDA is both, and it passes itself as custodian when it withdraws.
+
 **The PDA cannot pay.** It is the fee payer of the execution message only as a placeholder. A real fee payer, funded and online, has to sign the relay transaction. In the Anza CLI's terms that is the configured keypair; here it is a freshly airdropped key.
 
 **Kit and Rust compile the same instructions into different bytes.** Both order a compiled message's accounts by privilege, but within a class `@solana/kit` sorts addresses as strings, with an English collator, and the Rust compiler sorts them as bytes. With one account per class, as in a SOL transfer's execution message, the two agree; the authorization message and a token transfer have several per class and they do not. Both messages are valid and the Executor runs either, but the signature and the next nonce differ, so a chain signed in one language has to be checked by decoding its instructions, not by recompiling them. The TypeScript wire tests compare decoded instructions, not bytes, for this reason.
@@ -137,6 +147,7 @@ The next nonce is known before anything is sent because an SPL nonce advances to
 | `@solana-program/system` | 0.16.0 | the System program plugin, and the System nonce helpers for the durable nonce comparison |
 | `spl-token-interface` | 3.0.0 | the version the pinned Anza CLI builds `migrate token` with; `spl-associated-token-account-interface` 2.0.0 alongside it |
 | `@solana-program/token` | 0.18.0 | the Token program plugin; its `createMint`, `mintToATA`, and `transferToATA` instruction plans |
+| `solana-stake-interface`, `@solana-program/stake` | 5.1.1, 0.11.0 | the stake instructions and account state `migrate` uses; the crate is the version the pinned Anza CLI builds `migrate stake` with |
 | Lighthouse | mainnet deployment `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, from the pinned repo's test fixture | the assertion program `deadline` uses |
 | `lighthouse-sdk` | 3.0.0 (crates.io and npm) | builds the Lighthouse instruction and names its error code |
 
@@ -159,7 +170,7 @@ just demo   # every example against a fresh validator; each checks its own resul
 just check  # format, lint, typecheck, and the offline tests
 ```
 
-The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, and `cancel` requires the cancelled action to be rejected with the funds unmoved. CI runs `just check` and `just demo`.
+The offline tests check the three TypeScript helpers that stand in for missing client functions against what the Anza client crates produce for the same inputs, including an authorization message with two authorities; [`rust/tests/wire.rs`](rust/tests/wire.rs) and [`ts/kit/test/wire.test.ts`](ts/kit/test/wire.test.ts) assert the same expected values. The examples are the live tests: each exits non-zero unless the relay landed, the funds arrived, the nonce advanced to the value computed at signing time, and, in `sign-relay`, a relay with the amount edited and a replay were both rejected; `multi-signer` also requires the one-signature relay to be rejected, `failed-attempt` requires the first relay to fail on chain with the nonce unchanged, `deadline` requires the late relay to be rejected with the nonce unchanged, `cancel` requires the cancelled action to be rejected with the funds unmoved, and `migrate` checks every balance and authority after each of its two transactions. CI runs `just check` and `just demo`.
 
 ## Layout
 

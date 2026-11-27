@@ -28,6 +28,12 @@ spl-nonce-interface = "2.0.0"
 spl-associated-token-account-interface = "2.0.0"
 spl-token-interface = "3.0.0"
 
+# The stake crate the pinned Anza CLI builds `migrate stake` with.
+solana-stake-interface = { version = "5.1.1", features = ["bincode"] }
+# The account type the RPC client returns; this feature lets it decode the
+# stake account's state.
+solana-account = { version = "5.4.0", features = ["bincode"] }
+
 # The client for Lighthouse, the assertion program the `deadline` example uses to
 # give an authorization a deadline.
 lighthouse-sdk = "3.0.0"
